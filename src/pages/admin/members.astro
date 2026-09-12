@@ -1,0 +1,151 @@
+---
+import Base from '../../layouts/Base.astro';
+import * as members from '../../lib/data/members';
+import { privateCacheHeaders } from '../../lib/cache';
+
+const { audience } = Astro.locals;
+
+// 404, not 403. A 403 would confirm the route exists to anyone who guesses it.
+if (audience !== 'owner') return new Response(null, { status: 404 });
+
+for (const [key, value] of Object.entries(privateCacheHeaders())) {
+  Astro.response.headers.set(key, value);
+}
+
+// The rest of the site degrades to public-only when D1 is unreachable; this
+// page is the one place that should say so plainly instead, since an empty
+// queue and a missing database look identical and mean very different things.
+let all: Awaited<ReturnType<typeof members.list>> = [];
+let storageError: string | null = null;
+
+try {
+  all = await members.list();
+} catch (error) {
+  storageError = error instanceof Error ? error.message : String(error);
+}
+
+const pending = all.filter((m) => m.status === 'pending');
+const approved = all.filter((m) => m.status === 'approved');
+const blocked = all.filter((m) => m.status === 'blocked');
+
+const notice = Astro.url.searchParams.get('done');
+
+const when = new Intl.DateTimeFormat('en-GB', {
+  day: '2-digit',
+  month: 'short',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+  timeZone: 'UTC',
+});
+
+const groups = [
+  { label: `Pending · ${pending.length}`, rows: pending, actions: ['approve', 'block'] },
+  { label: `Approved · ${approved.length}`, rows: approved, actions: ['block'] },
+  { label: `Blocked · ${blocked.length}`, rows: blocked, actions: ['approve'] },
+];
+---
+
+<Base title="Members" noindex>
+  <section class="intro">
+    <h1>Members</h1>
+    <p>
+      Anyone who signs in lands here as <strong>pending</strong>, which grants nothing beyond the
+      public tier. Approving moves them to the circle. Owners are set by the <code>OWNERS</code>
+      environment variable and do not appear in this queue.
+    </p>
+  </section>
+
+  {notice && <p class="empty">{notice}</p>}
+
+  {
+    storageError && (
+      <div class="notice">
+        <h2>The member store isn't reachable.</h2>
+        <p>
+          Nobody is locked out by this — the rest of the site falls back to public-only for
+          anyone not covered by <code>OWNERS</code>. But approvals can't be read or written until
+          it's fixed.
+        </p>
+        <p style="font-family: var(--mono); font-size: 0.75rem; color: var(--text-faint)">
+          {storageError}
+        </p>
+      </div>
+    )
+  }
+
+  {
+    !storageError &&
+      groups.map((group) => (
+      <>
+        <p class="section-label">{group.label}</p>
+        {group.rows.length === 0 ? (
+          <p class="empty">Nobody.</p>
+        ) : (
+          <ul class="members">
+            {group.rows.map((member) => (
+              <li class="member">
+                <div>
+                  <span class="member-name">{member.login ?? member.email ?? member.id}</span>
+                  <span class="member-meta">
+                    {member.email && member.login ? `${member.email} · ` : ''}
+                    {member.provider} · first seen {when.format(member.requestedAt)}
+                  </span>
+                </div>
+                <form method="POST" action="/admin/decide">
+                  <input type="hidden" name="id" value={member.id} />
+                  {group.actions.map((action) => (
+                    <button class="button" type="submit" name="action" value={action}>
+                      {action}
+                    </button>
+                  ))}
+                </form>
+              </li>
+            ))}
+          </ul>
+        )}
+      </>
+    ))
+  }
+</Base>
+
+<style>
+  .members {
+    list-style: none;
+    margin: 0 0 2.5rem;
+    padding: 0;
+  }
+
+  .member {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+    padding-block: 0.875rem;
+    border-block-end: 1px solid var(--border);
+  }
+
+  .member-name {
+    display: block;
+    font-weight: 500;
+  }
+
+  .member-meta {
+    display: block;
+    font-family: var(--mono);
+    font-size: 0.6875rem;
+    color: var(--text-faint);
+    margin-block-start: 0.125rem;
+  }
+
+  .member form {
+    display: flex;
+    gap: 0.375rem;
+  }
+
+  .member button {
+    font-size: 0.75rem;
+    padding: 0.3125rem 0.625rem;
+  }
+</style>

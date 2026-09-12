@@ -1,0 +1,61 @@
+---
+import type { MemberStatus } from '../lib/data/members';
+
+interface Props {
+  status?: MemberStatus;
+  audience: string;
+}
+
+const { status, audience } = Astro.props;
+
+// Nothing to say to someone who already has access, or to a visitor who has
+// not signed in — the sign-in page speaks for itself.
+const show = audience === 'anonymous' && status !== undefined;
+---
+
+{
+  show && (
+    <div class="status-notice" data-status={status}>
+      {status === 'pending' && (
+        <>
+          <strong>Waiting on nkash to approve you.</strong>
+          <span>Until then, enjoy the public vault. You'll see more here once you're let in.</span>
+        </>
+      )}
+      {status === 'blocked' && (
+        <>
+          <strong>Your request wasn't approved.</strong>
+          <span>The public vault is still open to you.</span>
+        </>
+      )}
+    </div>
+  )
+}
+
+<style>
+  .status-notice {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    border: 1px solid var(--border);
+    border-inline-start: 2px solid var(--warn);
+    border-radius: 6px;
+    background: var(--bg-raised);
+    padding: 0.875rem 1.125rem;
+    margin-block-end: 2.5rem;
+    font-size: 0.9375rem;
+  }
+
+  .status-notice strong {
+    font-weight: 600;
+  }
+
+  .status-notice span {
+    color: var(--text-dim);
+    font-size: 0.875rem;
+  }
+
+  .status-notice[data-status='blocked'] {
+    border-inline-start-color: var(--text-faint);
+  }
+</style>

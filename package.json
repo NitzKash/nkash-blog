@@ -1,0 +1,39 @@
+{
+  "name": "nkash-dev",
+  "type": "module",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "wrangler dev",
+    "check": "astro check",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "smoke": "node scripts/smoke.mjs",
+    "db:migrate": "wrangler d1 migrations apply nkash-blog --local",
+    "db:migrate:remote": "wrangler d1 migrations apply nkash-blog --remote",
+    "db:console": "wrangler d1 execute nkash-blog --local --command",
+    "deploy": "astro build && wrangler deploy",
+    "astro": "astro",
+    "generate-types": "wrangler types"
+  },
+  "dependencies": {
+    "@astrojs/cloudflare": "^14.3.1",
+    "@astrojs/mdx": "^8.0.1",
+    "astro": "^7.3.2",
+    "marked": "^18.0.12",
+    "wrangler": "^4.131.1"
+  },
+  "allowScripts": {
+    "esbuild": true
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.10",
+    "typescript": "^6.0.3",
+    "vitest": "^3.2.7"
+  }
+}

@@ -1,0 +1,61 @@
+---
+import Base from '../layouts/Base.astro';
+import SignIn from '../components/SignIn.astro';
+import { safeRedirect } from '../lib/redirect';
+import { privateCacheHeaders } from '../lib/cache';
+
+const { viewer, audience, memberStatus } = Astro.locals;
+const next = safeRedirect(Astro.url.searchParams.get('next'));
+const error = Astro.url.searchParams.get('error');
+
+for (const [key, value] of Object.entries(privateCacheHeaders())) {
+  Astro.response.headers.set(key, value);
+}
+
+// A signed-in reader who already has access has no reason to be here. Someone
+// still awaiting approval does: this page is where they are told so.
+if (viewer && !error && audience !== 'anonymous') return Astro.redirect(next);
+---
+
+<Base title="Sign in" noindex>
+  <div class="notice">
+    {
+      error && (
+        <p style="color: var(--warn)">
+          <strong>{error}</strong>
+        </p>
+      )
+    }
+
+    {
+      viewer ? (
+        <>
+          <h2>
+            {memberStatus === 'blocked'
+              ? "Your request wasn't approved."
+              : 'Waiting on nkash to approve you.'}
+          </h2>
+          <p>
+            You're signed in as <strong>{viewer.login ?? viewer.email}</strong>.
+            {memberStatus === 'blocked'
+              ? ' The public vault is still open to you.'
+              : " Until then, enjoy the public vault only. Nothing else to do — I'll see the request and let you in."}
+          </p>
+          <p>
+            <a href="/">Back to the index</a> · <a href="/auth/logout">Sign out</a>
+          </p>
+        </>
+      ) : (
+        <>
+          <h2>Sign in</h2>
+          <p>
+            This tells me who you are so I can check you against the list. It doesn't create an
+            account, and I only ask for your verified email address — nothing else, and no access
+            to your repositories or your inbox.
+          </p>
+          <SignIn next={next} />
+        </>
+      )
+    }
+  </div>
+</Base>

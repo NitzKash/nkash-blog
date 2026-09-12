@@ -1,0 +1,46 @@
+---
+import Base from '../layouts/Base.astro';
+import EntryList from '../components/EntryList.astro';
+import MemberStatusNotice from '../components/MemberStatusNotice.astro';
+import { posts as postStore } from '../lib/data';
+import { visibleTo } from '../lib/visibility';
+import { publicCacheHeaders, privateCacheHeaders } from '../lib/cache';
+
+const { viewer, audience, memberStatus } = Astro.locals;
+
+// The store narrows by audience in SQL; visibleTo() is still the decision.
+const posts = visibleTo(await postStore.list(audience), audience, viewer);
+const recent = posts.slice(0, 8);
+
+// An anonymous render contains only public content, so it is safe to cache at
+// the edge. Anything personalised must not be.
+const headers = audience === 'anonymous' ? publicCacheHeaders() : privateCacheHeaders();
+for (const [key, value] of Object.entries(headers)) Astro.response.headers.set(key, value);
+---
+
+<Base
+  title="nkash"
+  description="nkash — notes on distributed systems, computer vision at scale, and building things that hold up."
+>
+  <MemberStatusNotice status={memberStatus} audience={audience} />
+
+  <section class="intro">
+    <h1>Backend and distributed systems, mostly.</h1>
+    <p>
+      I build computer-vision infrastructure for semiconductor manufacturing — high-throughput
+      pipelines, multi-tenant systems, and the unglamorous machinery that keeps them upright.
+      This is where I write that down.
+    </p>
+  </section>
+
+  <p class="section-label">Recent</p>
+  <EntryList entries={recent} empty="First post pending. As ever." />
+
+  {
+    posts.length > recent.length && (
+      <p class="empty">
+        <a href="/posts">All {posts.length} posts →</a>
+      </p>
+    )
+  }
+</Base>

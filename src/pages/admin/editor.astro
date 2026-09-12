@@ -1,0 +1,319 @@
+---
+import Base from '../../layouts/Base.astro';
+import { posts as postStore } from '../../lib/data';
+import { privateCacheHeaders } from '../../lib/cache';
+
+const { audience } = Astro.locals;
+
+// 404, not 403 — a 403 confirms the route exists.
+if (audience !== 'owner') return new Response(null, { status: 404 });
+
+for (const [key, value] of Object.entries(privateCacheHeaders())) {
+  Astro.response.headers.set(key, value);
+}
+
+const slug = Astro.url.searchParams.get('slug');
+const existing = slug ? await postStore.get(slug) : null;
+
+// Editing a slug that does not exist is a mistake worth surfacing, not a
+// silent "new post" form with the wrong title.
+if (slug && !existing) return new Response(null, { status: 404 });
+
+const isNew = !existing;
+const error = Astro.url.searchParams.get('error');
+
+/**
+ * Visibility default: `private` on create, current value on update.
+ *
+ * Creating something that is immediately public by default is how drafts leak.
+ * Updating something and having it silently change tier is how published posts
+ * disappear. Neither default is arbitrary.
+ */
+const visibility = existing?.data.visibility ?? 'private';
+
+const isoDate = (date: Date) => date.toISOString().slice(0, 10);
+const today = isoDate(new Date());
+
+const TIERS = [
+  { value: 'private', label: 'Private', hint: 'Only you. Returns 404 to everyone else.' },
+  { value: 'circle', label: 'Friends', hint: 'Approved members. Others get a sign-in prompt.' },
+  { value: 'public', label: 'Public', hint: 'Anyone. Indexed, cached at the edge, in the feed.' },
+];
+---
+
+<Base title={isNew ? 'New post' : `Editing ${existing!.data.title}`} noindex>
+  <section class="intro">
+    <h1>{isNew ? 'New post' : 'Edit post'}</h1>
+    {
+      !isNew && (
+        <p>
+          <a href={`/posts/${existing!.id}`}>/posts/{existing!.id}</a>
+        </p>
+      )
+    }
+  </section>
+
+  {error && <p class="form-error">{error}</p>}
+
+  <form method="POST" action="/admin/save" class="editor">
+    {!isNew && <input type="hidden" name="originalSlug" value={existing!.id} />}
+
+    <label class="field">
+      <span>Title</span>
+      <input
+        type="text"
+        name="title"
+        required
+        autocomplete="off"
+        value={existing?.data.title ?? ''}
+        placeholder="Batching on the wafer line"
+      />
+    </label>
+
+    <label class="field">
+      <span>
+        Slug <em>{isNew ? 'leave blank to derive from the title' : 'changing this changes the URL'}</em>
+      </span>
+      <input
+        type="text"
+        name="slug"
+        autocomplete="off"
+        value={existing?.id ?? ''}
+        placeholder="batching-on-the-wafer-line"
+      />
+    </label>
+
+    <label class="field">
+      <span>Description <em>optional — the first paragraph is used if blank</em></span>
+      <input
+        type="text"
+        name="description"
+        autocomplete="off"
+        value={existing?.data.description ?? ''}
+      />
+    </label>
+
+    <fieldset class="tiers">
+      <legend>Visibility</legend>
+      {
+        TIERS.map((tier) => (
+          <label class="tier-option">
+            <input
+              type="radio"
+              name="visibility"
+              value={tier.value}
+              checked={visibility === tier.value}
+            />
+            <span class="tier-label">{tier.label}</span>
+            <span class="tier-hint">{tier.hint}</span>
+          </label>
+        ))
+      }
+    </fieldset>
+
+    <div class="row">
+      <label class="field">
+        <span>Date</span>
+        <input
+          type="date"
+          name="pubDate"
+          value={existing ? isoDate(existing.data.pubDate) : today}
+        />
+      </label>
+
+      <label class="field">
+        <span>Tags <em>comma separated</em></span>
+        <input
+          type="text"
+          name="tags"
+          autocomplete="off"
+          value={existing?.data.tags.join(', ') ?? ''}
+        />
+      </label>
+    </div>
+
+    <label class="checkbox">
+      <input type="checkbox" name="draft" value="1" checked={existing?.data.draft ?? false} />
+      <span>Draft — owner-only regardless of the tier above</span>
+    </label>
+
+    <label class="field">
+      <span>Body <em>markdown · ⌘S to save · tab indents</em></span>
+      <textarea name="body" id="body" spellcheck="true" rows="24"></textarea>
+    </label>
+
+    <div class="actions">
+      <button class="button primary" type="submit">{isNew ? 'Create post' : 'Save changes'}</button>
+      <a class="button" href="/admin/posts">Cancel</a>
+      {
+        !isNew && (
+          <button class="button danger" type="submit" name="action" value="delete"
+            data-confirm={`Delete "${existing!.data.title}"? This cannot be undone.`}>
+            Delete
+          </button>
+        )
+      }
+    </div>
+  </form>
+</Base>
+
+<script is:inline define:vars={{ initialBody: existing?.body ?? '' }}>
+  const textarea = document.getElementById('body');
+  if (textarea) {
+    // Set through the DOM rather than in the template: markdown containing
+    // `</textarea>` would otherwise close the element and spill the rest of
+    // the post into the page as markup.
+    textarea.value = initialBody;
+
+    textarea.addEventListener('keydown', (event) => {
+      if (event.key === 'Tab') {
+        event.preventDefault();
+        const { selectionStart: start, selectionEnd: end, value } = textarea;
+        textarea.value = `${value.slice(0, start)}  ${value.slice(end)}`;
+        textarea.selectionStart = textarea.selectionEnd = start + 2;
+      }
+    });
+  }
+
+  document.addEventListener('keydown', (event) => {
+    if ((event.metaKey || event.ctrlKey) && event.key === 's') {
+      event.preventDefault();
+      document.querySelector('form.editor')?.requestSubmit();
+    }
+  });
+
+  for (const button of document.querySelectorAll('[data-confirm]')) {
+    button.addEventListener('click', (event) => {
+      if (!window.confirm(button.getAttribute('data-confirm'))) event.preventDefault();
+    });
+  }
+</script>
+
+<style>
+  .editor {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+    padding-block-end: 4rem;
+  }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+  }
+
+  .field > span,
+  .tiers legend {
+    font-family: var(--mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+  }
+
+  .field em {
+    text-transform: none;
+    letter-spacing: 0;
+    font-style: normal;
+    opacity: 0.75;
+  }
+
+  input[type='text'],
+  input[type='date'],
+  textarea {
+    font-family: var(--mono);
+    font-size: 0.875rem;
+    color: var(--text);
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.5rem 0.75rem;
+    width: 100%;
+  }
+
+  textarea {
+    line-height: 1.65;
+    resize: vertical;
+    min-height: 24rem;
+    tab-size: 2;
+  }
+
+  input:focus-visible,
+  textarea:focus-visible {
+    border-color: var(--accent);
+  }
+
+  .row {
+    display: grid;
+    grid-template-columns: 1fr 2fr;
+    gap: 1rem;
+  }
+
+  @media (max-width: 34rem) {
+    .row {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  .tiers {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.875rem 1rem;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .tier-option {
+    display: grid;
+    grid-template-columns: auto auto 1fr;
+    align-items: baseline;
+    gap: 0.5rem;
+    cursor: pointer;
+  }
+
+  .tier-label {
+    font-weight: 500;
+    font-size: 0.9375rem;
+  }
+
+  .tier-hint {
+    color: var(--text-faint);
+    font-size: 0.8125rem;
+  }
+
+  .checkbox {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.875rem;
+    color: var(--text-dim);
+  }
+
+  .actions {
+    display: flex;
+    gap: 0.625rem;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .button.primary {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .button.danger {
+    margin-inline-start: auto;
+    color: var(--warn);
+    border-color: color-mix(in srgb, var(--warn) 35%, transparent);
+  }
+
+  .form-error {
+    color: var(--warn);
+    font-size: 0.9375rem;
+    border-inline-start: 2px solid var(--warn);
+    padding-inline-start: 0.875rem;
+  }
+</style>

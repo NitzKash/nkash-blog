@@ -1,0 +1,60 @@
+---
+import { getCollection } from 'astro:content';
+import Base from '../../layouts/Base.astro';
+import Tier from '../../components/Tier.astro';
+import { visibleTo } from '../../lib/visibility';
+import { publicCacheHeaders, privateCacheHeaders } from '../../lib/cache';
+
+const { viewer, audience } = Astro.locals;
+
+const all = await getCollection('projects');
+const projects = visibleTo(all, audience, viewer).sort((a, b) => a.data.order - b.data.order);
+
+const headers = audience === 'anonymous' ? publicCacheHeaders() : privateCacheHeaders();
+for (const [key, value] of Object.entries(headers)) Astro.response.headers.set(key, value);
+---
+
+<Base title="Projects" description="Things I've built, and the ones still in progress.">
+  <section class="intro">
+    <h1>Projects</h1>
+    <p>
+      Running demos live on subdomains — <code>demo.nkash.dev</code> and friends. Anything
+      compute-heavy runs off-platform; this site is a Cloudflare Worker and has a 10ms CPU budget
+      per request.
+    </p>
+  </section>
+
+  {
+    projects.length === 0 ? (
+      <p class="empty">Nothing listed yet.</p>
+    ) : (
+      projects.map((project) => (
+        <article class="project">
+          <h2>
+            {project.data.demo ? (
+              <a href={project.data.demo}>{project.data.title}</a>
+            ) : (
+              project.data.title
+            )}
+            <span class="tier" data-tier={project.data.status}>
+              {project.data.status}
+            </span>
+            <Tier visibility={project.data.visibility} />
+          </h2>
+          <p>{project.data.description}</p>
+          {project.data.stack.length > 0 && (
+            <ul class="stack">
+              {project.data.stack.map((tech) => (
+                <li>{tech}</li>
+              ))}
+            </ul>
+          )}
+          <div class="project-links">
+            {project.data.demo && <a href={project.data.demo}>demo →</a>}
+            {project.data.repo && <a href={project.data.repo}>source →</a>}
+          </div>
+        </article>
+      ))
+    )
+  }
+</Base>

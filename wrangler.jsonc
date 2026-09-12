@@ -1,0 +1,44 @@
+{
+	"$schema": "./node_modules/wrangler/config-schema.json",
+	"compatibility_date": "2026-09-11",
+	"compatibility_flags": ["global_fetch_strictly_public"],
+	"name": "nkash-blog",
+	"main": "@astrojs/cloudflare/entrypoints/server",
+	"assets": {
+		"directory": "./dist",
+		"binding": "ASSETS"
+	},
+	// The zone is in the same Cloudflare account, so wrangler provisions the DNS
+	// record and the TLS certificate on first deploy. Nothing to set up by hand.
+	"routes": [
+		{
+			"pattern": "blogs.nkash.dev",
+			"custom_domain": true
+		}
+	],
+	// Post rows and the asset index. Create with:
+	//   npx wrangler d1 create nkash-blog
+	// then paste the returned database_id here — it is an identifier, not a
+	// secret, and is safe to commit.
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "nkash-blog",
+			"database_id": "00000000-0000-0000-0000-000000000000",
+			"migrations_dir": "migrations"
+		}
+	],
+	// Images and attachments. Create with:
+	//   npx wrangler r2 bucket create nkash-blog-media
+	// Deliberately not given a public r2.dev URL: objects are served through the
+	// Worker so the same canView() decision that gates a post gates its images.
+	"r2_buckets": [
+		{
+			"binding": "MEDIA",
+			"bucket_name": "nkash-blog-media"
+		}
+	],
+	"observability": {
+		"enabled": true
+	}
+}

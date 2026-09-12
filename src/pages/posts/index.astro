@@ -1,0 +1,47 @@
+---
+import Base from '../../layouts/Base.astro';
+import EntryList from '../../components/EntryList.astro';
+import { posts as postStore } from '../../lib/data';
+import { visibleTo } from '../../lib/visibility';
+import { publicCacheHeaders, privateCacheHeaders } from '../../lib/cache';
+import type { Post } from '../../lib/data';
+
+const { viewer, audience } = Astro.locals;
+
+const posts = visibleTo(await postStore.list(audience), audience, viewer);
+
+// Group by year so the archive stays scannable as it grows.
+const byYear = new Map<number, Post[]>();
+for (const post of posts) {
+  const year = post.data.pubDate.getUTCFullYear();
+  byYear.set(year, [...(byYear.get(year) ?? []), post]);
+}
+const years = [...byYear.keys()].sort((a, b) => b - a);
+
+const headers = audience === 'anonymous' ? publicCacheHeaders() : privateCacheHeaders();
+for (const [key, value] of Object.entries(headers)) Astro.response.headers.set(key, value);
+---
+
+<Base title="Writing" description="Everything I've published.">
+  <section class="intro">
+    <h1>Writing</h1>
+    <p>
+      {posts.length} {posts.length === 1 ? 'post' : 'posts'}{
+        audience !== 'anonymous' && ' visible to you'
+      }.
+    </p>
+  </section>
+
+  {
+    years.length === 0 ? (
+      <p class="empty">Nothing published yet.</p>
+    ) : (
+      years.map((year) => (
+        <>
+          <p class="section-label">{year}</p>
+          <EntryList entries={byYear.get(year)!} />
+        </>
+      ))
+    )
+  }
+</Base>

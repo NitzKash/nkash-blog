@@ -1,0 +1,41 @@
+---
+import Tier from './Tier.astro';
+import type { CollectionEntry } from 'astro:content';
+
+interface Props {
+  entries: CollectionEntry<'posts'>[];
+  empty?: string;
+}
+
+const { entries, empty = 'Nothing here yet.' } = Astro.props;
+
+const dateFormat = new Intl.DateTimeFormat('en-GB', {
+  day: '2-digit',
+  month: 'short',
+  year: 'numeric',
+  timeZone: 'UTC',
+});
+---
+
+{
+  entries.length === 0 ? (
+    <p class="empty">{empty}</p>
+  ) : (
+    <ul class="entries">
+      {entries.map((entry) => (
+        <li class="entry">
+          <time datetime={entry.data.pubDate.toISOString()}>
+            {dateFormat.format(entry.data.pubDate)}
+          </time>
+          <div>
+            <h3 class="entry-title">
+              <a href={`/posts/${entry.id}`}>{entry.data.title}</a>
+              <Tier visibility={entry.data.visibility} draft={entry.data.draft} />
+            </h3>
+          </div>
+          <p class="entry-desc">{entry.data.description}</p>
+        </li>
+      ))}
+    </ul>
+  )
+}

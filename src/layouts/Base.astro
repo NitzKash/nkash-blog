@@ -1,0 +1,93 @@
+---
+import '../styles/global.css';
+
+interface Props {
+  title: string;
+  description?: string;
+  /** Set on every gated page so search engines never index them. */
+  noindex?: boolean;
+}
+
+const { title, description, noindex = false } = Astro.props;
+const { viewer, audience } = Astro.locals;
+
+const canonical = new URL(Astro.url.pathname, Astro.site ?? Astro.url.origin);
+const fullTitle = title === 'nkash' ? 'nkash' : `${title} — nkash`;
+const path = Astro.url.pathname;
+const signInTarget = `/login?next=${encodeURIComponent(path)}`;
+
+const nav = [
+  { href: '/', label: 'index' },
+  { href: '/posts', label: 'writing' },
+  { href: '/projects', label: 'projects' },
+  // Owner-only. These routes 404 for everyone else, so the links would be dead
+  // as well as pointless.
+  ...(audience === 'owner'
+    ? [
+        { href: '/admin/posts', label: 'write' },
+        { href: '/admin/members', label: 'members' },
+      ]
+    : []),
+];
+
+const isCurrent = (href: string) => (href === '/' ? path === '/' : path.startsWith(href));
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{fullTitle}</title>
+    {description && <meta name="description" content={description} />}
+    <link rel="canonical" href={canonical.href} />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="alternate" type="application/rss+xml" title="nkash" href="/rss.xml" />
+    {noindex && <meta name="robots" content="noindex, nofollow" />}
+    <meta property="og:title" content={fullTitle} />
+    {description && <meta property="og:description" content={description} />}
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content={canonical.href} />
+    <meta name="twitter:card" content="summary" />
+  </head>
+
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+
+    <div class="shell">
+      <header class="masthead">
+        <a class="wordmark" href="/">nkash<span>.dev</span></a>
+        <nav aria-label="Primary">
+          {
+            nav.map((item) => (
+              <a href={item.href} aria-current={isCurrent(item.href) ? 'page' : undefined}>
+                {item.label}
+              </a>
+            ))
+          }
+        </nav>
+      </header>
+
+      <main id="main">
+        <slot />
+      </main>
+
+      <footer class="colophon">
+        <span>nkash · India</span>
+        <span>
+          {
+            viewer ? (
+              <>
+                {viewer.login ?? viewer.email}
+                {audience !== 'anonymous' && ` · ${audience}`}
+                {' · '}
+                <a href={`/auth/logout?next=${encodeURIComponent(path)}`}>sign out</a>
+              </>
+            ) : (
+              <a href={signInTarget}>sign in</a>
+            )
+          }
+        </span>
+      </footer>
+    </div>
+  </body>
+</html>

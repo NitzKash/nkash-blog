@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /auth/
+Disallow: /login
+Disallow: /admin/
+
+Sitemap: https://blogs.nkash.dev/sitemap.xml

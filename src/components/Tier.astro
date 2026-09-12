@@ -1,0 +1,22 @@
+---
+import type { Visibility } from '../content.config';
+
+interface Props {
+  visibility: Visibility;
+  draft?: boolean;
+}
+
+const { visibility, draft = false } = Astro.props;
+
+// Public posts carry no marker — the absence of a badge is the signal, and it
+// keeps the index quiet for the readers who only ever see public writing.
+const label = draft ? 'draft' : visibility === 'public' ? null : visibility;
+---
+
+{
+  label && (
+    <span class="tier" data-tier={label} title={`Visibility: ${label}`}>
+      {label}
+    </span>
+  )
+}

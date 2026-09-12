@@ -1,0 +1,73 @@
+---
+import Base from '../../layouts/Base.astro';
+import Tier from '../../components/Tier.astro';
+import { posts as postStore } from '../../lib/data';
+import { privateCacheHeaders } from '../../lib/cache';
+
+const { audience } = Astro.locals;
+
+if (audience !== 'owner') return new Response(null, { status: 404 });
+
+for (const [key, value] of Object.entries(privateCacheHeaders())) {
+  Astro.response.headers.set(key, value);
+}
+
+let all: Awaited<ReturnType<typeof postStore.list>> = [];
+let storageError: string | null = null;
+
+try {
+  all = await postStore.list('owner');
+} catch (error) {
+  storageError = error instanceof Error ? error.message : String(error);
+}
+
+const notice = Astro.url.searchParams.get('done');
+
+const when = new Intl.DateTimeFormat('en-GB', {
+  day: '2-digit',
+  month: 'short',
+  year: 'numeric',
+  timeZone: 'UTC',
+});
+---
+
+<Base title="Posts" noindex>
+  <section class="intro">
+    <h1>Posts</h1>
+    <p>{all.length} total, every tier.</p>
+  </section>
+
+  {notice && <p class="empty">{notice}</p>}
+
+  <p><a class="button" href="/admin/editor">New post</a></p>
+
+  {
+    storageError ? (
+      <div class="notice">
+        <h2>The post store isn't reachable.</h2>
+        <p style="font-family: var(--mono); font-size: 0.75rem; color: var(--text-faint)">
+          {storageError}
+        </p>
+      </div>
+    ) : all.length === 0 ? (
+      <p class="empty">Nothing written yet.</p>
+    ) : (
+      <ul class="entries">
+        {all.map((post) => (
+          <li class="entry">
+            <time datetime={post.data.pubDate.toISOString()}>{when.format(post.data.pubDate)}</time>
+            <div>
+              <h3 class="entry-title">
+                <a href={`/admin/editor?slug=${encodeURIComponent(post.id)}`}>{post.data.title}</a>
+                <Tier visibility={post.data.visibility} draft={post.data.draft} />
+              </h3>
+            </div>
+            <p class="entry-desc">
+              <a href={`/posts/${post.id}`}>/posts/{post.id}</a>
+            </p>
+          </li>
+        ))}
+      </ul>
+    )
+  }
+</Base>

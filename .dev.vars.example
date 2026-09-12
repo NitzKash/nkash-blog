@@ -1,0 +1,41 @@
+# Copy to `.dev.vars` for local development. Never commit `.dev.vars`.
+#
+# In production these are Cloudflare secrets, not vars:
+#   npx wrangler secret put SESSION_SECRET
+#   ...and so on for each key below.
+#
+# Use a DIFFERENT SESSION_SECRET in production. Sharing it with dev would make
+# a cookie minted on your laptop valid on the live site.
+
+# Signs session cookies. Generate with:
+#   node -e "console.log(crypto.randomBytes(32).toString('base64url'))"
+# Rotating this invalidates every session immediately.
+SESSION_SECRET=""
+
+# --- Access -------------------------------------------------------------------
+# Comma-separated GitHub logins and/or email addresses. Case-insensitive.
+# These are the bootstrap and are checked before any database query, so an
+# owner can still get in when D1 is empty or unreachable.
+#
+# OWNERS sees everything and can reach /admin. CIRCLE sees public + friends.
+# Everyone else who signs in lands in the pending queue at /admin/members.
+OWNERS=""
+CIRCLE=""
+
+# --- Sign-in providers -------------------------------------------------------
+# A provider appears on the sign-in page only if both its keys are set, so you
+# can run with one, both, or neither. With neither, public posts still work.
+#
+# Both providers share one callback URL:
+#   local:      http://localhost:4321/auth/callback
+#   production: https://blogs.nkash.dev/auth/callback
+
+# https://github.com/settings/developers -> New OAuth App
+GITHUB_CLIENT_ID=""
+GITHUB_CLIENT_SECRET=""
+
+# https://console.cloud.google.com/apis/credentials
+#   -> Create credentials -> OAuth client ID -> Web application
+#   Authorised redirect URIs: the two callback URLs above
+GOOGLE_CLIENT_ID=""
+GOOGLE_CLIENT_SECRET=""
