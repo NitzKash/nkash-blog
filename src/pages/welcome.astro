@@ -1,0 +1,217 @@
+---
+import Base from '../layouts/Base.astro';
+import { suggest } from '../lib/username';
+import { safeRedirect } from '../lib/redirect';
+import { privateCacheHeaders } from '../lib/cache';
+
+const { viewer, username, memberStatus } = Astro.locals;
+
+// Nothing to choose if you are not signed in.
+if (!viewer) return Astro.redirect('/login?next=/welcome');
+
+for (const [key, value] of Object.entries(privateCacheHeaders())) {
+  Astro.response.headers.set(key, value);
+}
+
+const next = safeRedirect(Astro.url.searchParams.get('next'));
+const error = Astro.url.searchParams.get('error');
+const taken = Astro.url.searchParams.get('taken');
+
+// Three suggestions rather than one: a single option reads as an instruction,
+// and the whole point is that picking a handle should feel easy.
+const suggestions = [...new Set([suggest(), suggest(), suggest()])];
+
+// What they signed in as — shown once, so the trade being offered is visible.
+const providerIdentity = viewer.login ?? viewer.email ?? 'your account';
+---
+
+<Base title="Pick a handle" noindex>
+  <div class="welcome">
+    <h1>{username ? 'Change your handle' : 'Pick a handle'}</h1>
+
+    <p class="lede">
+      You signed in as <strong>{providerIdentity}</strong>. You don't have to carry that around
+      here — <strong>maybe you'd rather be anonymous.</strong> Pick something else and that's what
+      shows up instead.
+    </p>
+
+    {error && <p class="error">{error}</p>}
+    {taken && <p class="error">“{taken}” is taken. Try another.</p>}
+
+    <form method="POST" action="/welcome/claim">
+      <input type="hidden" name="next" value={next} />
+
+      <label class="field">
+        <span>Handle</span>
+        <input
+          type="text"
+          name="username"
+          id="username"
+          required
+          minlength="3"
+          maxlength="24"
+          autocomplete="off"
+          autocapitalize="off"
+          spellcheck="false"
+          value={username ?? suggestions[0]}
+          pattern="[A-Za-z][A-Za-z0-9\-]*"
+        />
+        <span class="hint">
+          Letters, numbers and single hyphens. 3–24 characters. Only nkash ever sees which account
+          it belongs to.
+        </span>
+      </label>
+
+      <div class="suggestions">
+        <span class="suggestions-label">Or take one of these</span>
+        {
+          suggestions.map((name) => (
+            <button type="button" class="chip" data-suggestion={name}>
+              {name}
+            </button>
+          ))
+        }
+        <button type="button" class="chip reroll" id="reroll">↻ another</button>
+      </div>
+
+      <div class="actions">
+        <button class="button primary" type="submit">
+          {username ? 'Save handle' : 'Use this handle'}
+        </button>
+        <a class="button" href={next}>{username ? 'Cancel' : 'Skip for now'}</a>
+      </div>
+    </form>
+  </div>
+</Base>
+
+<script is:inline>
+  const field = document.getElementById('username');
+
+  for (const chip of document.querySelectorAll('[data-suggestion]')) {
+    chip.addEventListener('click', () => {
+      field.value = chip.dataset.suggestion;
+      field.focus();
+    });
+  }
+
+  // Rerolling client-side keeps it instant and avoids a round trip just to
+  // shuffle two word lists. The server validates whatever arrives regardless.
+  const ADJECTIVES = ['quiet','stray','idle','dense','lossy','silent','drifting','spare','hollow','slow','deep','thin','patient','stubborn','crooked','faint','restless','humming','unbuffered','lucid','stale','eager','warm'];
+  const NOUNS = ['wafer','photon','lattice','packet','buffer','isotope','kernel','spindle','vertex','quorum','shard','epoch','cache','raster','anode','bitmap','substrate','heuristic','gradient','daemon','octet','lumen'];
+  const pick = (list) => list[Math.floor(Math.random() * list.length)];
+
+  document.getElementById('reroll')?.addEventListener('click', () => {
+    const base = `${pick(ADJECTIVES)}-${pick(NOUNS)}`;
+    field.value = Math.random() < 0.34 ? `${base}-${Math.floor(Math.random() * 90) + 10}` : base;
+    field.focus();
+  });
+</script>
+
+<style>
+  .welcome {
+    max-width: 46ch;
+    padding-block-end: 4rem;
+  }
+
+  .welcome h1 {
+    font-size: 1.5rem;
+    letter-spacing: -0.015em;
+    margin: 0 0 0.75rem;
+  }
+
+  .lede {
+    color: var(--text-dim);
+    margin: 0 0 2rem;
+  }
+
+  .error {
+    color: var(--warn);
+    font-size: 0.9375rem;
+    border-inline-start: 2px solid var(--warn);
+    padding-inline-start: 0.875rem;
+  }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+    margin-block-end: 1.25rem;
+  }
+
+  .field > span:first-child {
+    font-family: var(--mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+  }
+
+  .field input {
+    font-family: var(--mono);
+    font-size: 1rem;
+    color: var(--text);
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.625rem 0.75rem;
+  }
+
+  .field input:focus-visible {
+    border-color: var(--accent);
+  }
+
+  .hint {
+    font-size: 0.8125rem;
+    color: var(--text-faint);
+    line-height: 1.5;
+  }
+
+  .suggestions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+    align-items: center;
+    margin-block-end: 1.75rem;
+  }
+
+  .suggestions-label {
+    font-family: var(--mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    width: 100%;
+    margin-block-end: 0.25rem;
+  }
+
+  .chip {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: none;
+    color: var(--text-dim);
+    cursor: pointer;
+  }
+
+  .chip:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .chip.reroll {
+    color: var(--text-faint);
+  }
+
+  .actions {
+    display: flex;
+    gap: 0.625rem;
+    flex-wrap: wrap;
+  }
+
+  .button.primary {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+</style>

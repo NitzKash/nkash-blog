@@ -17,6 +17,8 @@
     "db:migrate": "wrangler d1 migrations apply nkash-blog --local",
     "db:migrate:remote": "wrangler d1 migrations apply nkash-blog --remote",
     "db:console": "wrangler d1 execute nkash-blog --local --command",
+    "db:backup": "node scripts/backup.mjs",
+    "db:backup:local": "node scripts/backup.mjs --local",
     "deploy": "astro build && wrangler deploy",
     "astro": "astro",
     "generate-types": "wrangler types"

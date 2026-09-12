@@ -12,6 +12,10 @@ declare global {
       audience: Audience;
       /** Absent for anonymous visitors and anyone covered by the env lists. */
       memberStatus?: MemberStatus;
+      /** Chosen handle, shown in place of the provider login. */
+      username?: string;
+      /** True when this viewer has a member row and no handle yet. */
+      needsUsername: boolean;
     }
   }
 }

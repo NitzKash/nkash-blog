@@ -68,12 +68,18 @@ export const GET: APIRoute = async ({ url, cookies }) => {
   // Recording the sign-in is what puts them in the approval queue. It never
   // changes an existing status, so signing in again neither resets an approval
   // nor moves a blocked person back into the queue.
-  await recordSignIn(viewer);
+  const { needsUsername } = await recordSignIn(viewer);
 
   const token = await createSession(viewer, requireEnv('SESSION_SECRET'));
 
+  // A first-time visitor is offered a handle before being dropped wherever
+  // they were headed. It is skippable — the destination rides along in `next`.
+  const destination = needsUsername
+    ? `/welcome?next=${encodeURIComponent(safeRedirect(state.next))}`
+    : safeRedirect(state.next);
+
   const headers = new Headers({
-    Location: safeRedirect(state.next),
+    Location: destination,
     'Cache-Control': 'private, no-store',
   });
   headers.append('Set-Cookie', sessionCookie(token));

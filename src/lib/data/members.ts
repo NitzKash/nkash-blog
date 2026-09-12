@@ -10,6 +10,8 @@ export interface Member {
   email?: string;
   name?: string;
   avatar?: string;
+  /** Chosen handle. Absent until the member picks one; display falls back. */
+  username?: string;
   status: MemberStatus;
   requestedAt: Date;
   lastSeenAt: Date;
@@ -25,6 +27,7 @@ interface MemberRow {
   email: string | null;
   name: string | null;
   avatar: string | null;
+  username: string | null;
   status: string;
   requested_at: string;
   last_seen_at: string;
@@ -46,6 +49,7 @@ function toMember(row: MemberRow): Member {
     email: row.email ?? undefined,
     name: row.name ?? undefined,
     avatar: row.avatar ?? undefined,
+    username: row.username ?? undefined,
     status: toStatus(row.status),
     requestedAt: new Date(row.requested_at),
     lastSeenAt: new Date(row.last_seen_at),
@@ -114,6 +118,28 @@ export async function counts(): Promise<Record<MemberStatus, number>> {
   const out: Record<MemberStatus, number> = { pending: 0, approved: 0, blocked: 0 };
   for (const row of results ?? []) out[toStatus(row.status)] = row.n;
   return out;
+}
+
+/**
+ * Claims a handle.
+ *
+ * Returns false when it is already taken. The unique index is the actual
+ * guard — checking first and then writing would leave a race between the two,
+ * and two people picking the same suggestion at the same moment is exactly the
+ * case a generated suggestion makes more likely, not less.
+ */
+export async function claimUsername(id: string, username: string): Promise<boolean> {
+  try {
+    const result = await db()
+      .prepare('UPDATE members SET username = ?2 WHERE id = ?1')
+      .bind(id, username)
+      .run();
+    return result.success;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/UNIQUE constraint failed/i.test(message)) return false;
+    throw error;
+  }
 }
 
 export async function decide(

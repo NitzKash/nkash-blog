@@ -29,6 +29,8 @@ export const onRequest = defineMiddleware(async (context, next) => {
   context.locals.viewer = viewer;
   context.locals.audience = membership.audience;
   context.locals.memberStatus = membership.status;
+  context.locals.username = membership.username;
+  context.locals.needsUsername = membership.needsUsername;
 
   const response = await next();
 

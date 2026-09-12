@@ -9,7 +9,11 @@ interface Props {
 }
 
 const { title, description, noindex = false } = Astro.props;
-const { viewer, audience } = Astro.locals;
+const { viewer, audience, username } = Astro.locals;
+
+// The handle is what gets shown once there is one — carrying a GitHub login or
+// a work email around the site is exactly what it exists to avoid.
+const displayName = username ?? viewer?.login ?? viewer?.email;
 
 const canonical = new URL(Astro.url.pathname, Astro.site ?? Astro.url.origin);
 const fullTitle = title === 'nkash' ? 'nkash' : `${title} — nkash`;
@@ -77,7 +81,13 @@ const isCurrent = (href: string) => (href === '/' ? path === '/' : path.startsWi
           {
             viewer ? (
               <>
-                {viewer.login ?? viewer.email}
+                {audience === 'owner' ? (
+                  displayName
+                ) : (
+                  <a href={`/welcome?next=${encodeURIComponent(path)}`} title="Change your handle">
+                    {displayName}
+                  </a>
+                )}
                 {audience !== 'anonymous' && ` · ${audience}`}
                 {' · '}
                 <a href={`/auth/logout?next=${encodeURIComponent(path)}`}>sign out</a>

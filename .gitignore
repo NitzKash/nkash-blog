@@ -27,6 +27,9 @@ pnpm-debug.log*
 # wrangler
 .wrangler/
 
+# database dumps — these contain every post body, private ones included
+backups/
+
 # macOS-specific files
 .DS_Store
 
