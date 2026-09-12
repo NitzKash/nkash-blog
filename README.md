@@ -4,7 +4,7 @@ A personal site with three content tiers — **public**, **circle**, **private**
 single Cloudflare Worker for ₹0/month plus the domain.
 
 Static hosting can't gate content and managed auth wants a subscription, so the interesting
-part is doing tiered access on free infrastructure without a database.
+part is doing tiered access on free infrastructure without a server.
 
 ---
 
@@ -19,42 +19,47 @@ part is doing tiered access on free infrastructure without a database.
     ▼ (cache miss, or a gated URL)
   Worker
     │
-    ├─ middleware.ts ......... reads the signed cookie → Astro.locals.viewer
-    │
-    ├─ canView(item, viewer) . the one authorisation decision in the codebase
-    │
-    └─ render or refuse
+    ├─ middleware.ts ......... resolves the viewer from a signed cookie
+    ├─ membership.ts ......... env lists first, then the members table
+    ├─ canView(item, …) ...... the one authorisation decision in the codebase
+    └─ lib/data/ ............. the only code that touches D1 or R2
 ```
 
 **Authentication** is a stateless session: a JSON payload plus an HMAC-SHA256 signature in an
-`HttpOnly`, `Secure`, `SameSite=Lax`, `__Host-`-prefixed cookie. No session store, so nothing
-to run or back up.
+`HttpOnly`, `Secure`, `SameSite=Lax`, `__Host-`-prefixed cookie. No session store.
 
-**Authorisation** is re-evaluated from `src/access.config.ts` on every request rather than
-baked into the token. Removing someone from the list locks them out at the next deploy even
-though their cookie is still cryptographically valid. Rotating `SESSION_SECRET` invalidates
-every session at once, immediately.
+**Authorisation** is resolved per request, never baked into the token. Approving or revoking
+someone takes effect on their next page load rather than at cookie expiry.
 
-**The access list is a source file**, not a table. Granting access is a commit — attributable,
-reviewable, revertable, free. The cost is that revocation waits ~60s for a deploy. If that
-ever stops being an acceptable trade, move the two arrays into Cloudflare KV and read them in
-`audienceOf()`; nothing else changes.
+**`canView()` fails closed** in four separate places: the D1 column defaults to `private` with a
+`CHECK` constraint, the row parser maps anything unrecognised to `private`, the save handler
+falls back to `private`, and `canView` itself returns false for any value it doesn't know. The
+failure mode is silent disclosure, and nobody gets an alert for that.
 
-### What each tier does to a stranger
+### What each tier does
 
-| Tier | Signed out | Signed in, not listed | Listed | Owner |
+| Tier | Signed out | Signed in, not approved | Approved | Owner |
 |---|---|---|---|---|
 | `public` | reads it | reads it | reads it | reads it |
 | `circle` | `401` + sign-in prompt | `403` | reads it | reads it |
 | `private` | `404` | `404` | `404` | reads it |
 
-`circle` admits the post exists, because circle links are meant to be shared and a 404 would
-just confuse someone who was sent one. `private` returns a response byte-identical to a slug
-that was never written, so owner-only drafts aren't probeable. Neither tier appears in the
-index, the archive, `sitemap.xml` or `rss.xml`.
+`circle` admits the post exists, because those links are meant to be shared and a 404 would
+confuse someone who was sent one. `private` returns a response byte-identical to a slug that was
+never written, so owner-only drafts aren't probeable. Neither appears in the index, the archive,
+`sitemap.xml` or `rss.xml`.
 
-`draft: true` forces owner-only regardless of the declared visibility, so you can write a post
-as `visibility: public` from the first commit without it going live when you push.
+`draft: true` forces owner-only regardless of the declared tier.
+
+### Members
+
+Signing in is not being let in. A first sign-in records a `pending` row, which grants exactly
+what a stranger gets — the only difference is the message. The owner approves by hand at
+`/admin/members`.
+
+New members are offered a **handle**, so they don't have to carry a GitHub login or a work email
+around the site. The provider identity stays visible only to an owner deciding whether to
+approve them.
 
 ---
 
@@ -63,114 +68,110 @@ as `visibility: public` from the first commit without it going live when you pus
 ```bash
 npm install
 cp .dev.vars.example .dev.vars     # then fill it in, see below
+npm run db:migrate                 # local D1
 npm run dev                        # http://localhost:4321
 ```
 
 ```bash
-npm test        # 29 unit tests over the auth core
-npm run smoke   # end-to-end tier checks against a running dev server
-npm run build   # production build
+npm test              # 73 unit tests over the auth core
+npm run smoke         # 39 end-to-end tier checks
+npm run walkthrough   # prints a new reader's whole journey, step by step
+npm run check         # types
 ```
 
-### Secrets
+`npm run smoke` and `npm run walkthrough` need the dev server running. Both create their own
+throwaway posts and delete them afterwards — they never touch real content.
 
-Generate a session secret:
+### Environment
 
-```bash
-node -e "console.log(crypto.randomBytes(32).toString('base64url'))"
-```
+Everything lives in `.dev.vars` locally (gitignored) and Cloudflare secrets in production. See
+`.dev.vars.example` for the full list.
 
-### Sign-in providers
-
-Two are supported, GitHub and Google. **A provider appears on the sign-in page only if both of
-its keys are set**, so you can run with one, both, or neither — with neither, public posts still
-work and the gated tiers are simply unreachable. An unconfigured provider's URL returns 404
-rather than an error, so it is indistinguishable from a route that does not exist.
-
-Both providers share one callback URL, because which provider is in flight travels in the
-OAuth `state`, not the path. Adding a third provider needs no new redirect URI anywhere.
-
-| | Callback URL |
+| | |
 |---|---|
-| local | `http://localhost:4321/auth/callback` |
-| production | `https://blogs.nkash.dev/auth/callback` |
+| `SESSION_SECRET` | signs session cookies · `node -e "console.log(crypto.randomBytes(32).toString('base64url'))"` |
+| `OWNERS` | comma-separated logins/emails with full access |
+| `CIRCLE` | optional bootstrap list; the approval queue is the normal path |
+| `GITHUB_CLIENT_ID` / `_SECRET` | from <https://github.com/settings/developers> |
+| `GOOGLE_CLIENT_ID` / `_SECRET` | optional, from <https://console.cloud.google.com/apis/credentials> |
 
-- **GitHub** — <https://github.com/settings/developers> → New OAuth App. Scope is `user:email`
-  only; no repository access. Leave *Allow wildcard matching* off: it would send tokens to every
-  subdomain, which is exactly the isolation the `__Host-` cookie prefix exists to preserve.
-- **Google** — <https://console.cloud.google.com/apis/credentials> → Create credentials → OAuth
-  client ID → Web application. Scopes are `openid email profile`; no Gmail or Drive access.
+**A provider appears only when both its keys are set.** With neither, public posts still work
+and the gated tiers are simply unreachable. An unconfigured provider's URL returns 404 rather
+than an error, so it's indistinguishable from a route that doesn't exist.
 
-Both are asked only for a **verified** email address, and an unverified one is discarded rather
-than trusted — the access list matches on email, so accepting an unverified address would make
-it forgeable.
+Both providers share **one callback URL** — which provider is in flight travels in the OAuth
+`state`, not the path, so adding a third needs no new redirect URI anywhere:
 
-Locally these go in `.dev.vars` (gitignored). In production they're Cloudflare secrets:
-
-```bash
-npx wrangler secret put SESSION_SECRET        # a DIFFERENT one from dev
-npx wrangler secret put GITHUB_CLIENT_ID
-npx wrangler secret put GITHUB_CLIENT_SECRET
-npx wrangler secret put GOOGLE_CLIENT_ID
-npx wrangler secret put GOOGLE_CLIENT_SECRET
 ```
+local:      http://localhost:4321/auth/callback
+production: https://blogs.nkash.dev/auth/callback
+```
+
+Only **verified** email addresses are trusted. The access list matches on email, so accepting an
+unverified one would make it forgeable.
 
 ---
 
 ## Writing
 
-Markdown or MDX in `src/content/posts/`. The filename is the URL slug.
+Posts live in **D1**, not in this repository. Committing them would put private writing
+somewhere the site's access control doesn't reach.
 
-```yaml
----
-title: 'Batching on the wafer line'
-description: 'Throughput against p99, and why the obvious tradeoff is backwards.'
-pubDate: 2026-09-20
-visibility: public          # public | circle | private — defaults to private
-allow: []                   # extra people for a `circle` post; cannot open a `private` one
-tags: ['throughput']
-draft: false
----
-```
+Sign in as an owner and the nav gains `write` and `members`. `/admin/editor` is a plain markdown
+textarea — tab indents, ⌘S saves — with visibility as three radio buttons. **Creating defaults to
+private; updating keeps whatever the post already is.**
 
-`visibility` defaults to **private**. A typo in the frontmatter fails the build via the Zod
-schema; anything that somehow gets past it is refused by `canView()`. The system fails closed
-in both places, on purpose.
+Markdown is rendered once at save time, not per request: the free plan allows 10ms of CPU per
+request, and parsing produces byte-identical output every time. The source is stored alongside
+for bulk re-rendering.
 
-Granting someone access — add their GitHub login or verified email to `src/access.config.ts`,
-commit, push. Cloudflare redeploys in about a minute.
+`scripts/import-markdown.mjs <dir>` bulk-loads markdown files for drafts written outside the
+browser.
 
 ---
 
 ## Deploying
 
 ```bash
-npx wrangler deploy
+npx wrangler login
+npx wrangler d1 create nkash-blog            # paste the id into wrangler.jsonc
+npx wrangler r2 bucket create nkash-blog-media
+npx wrangler d1 migrations apply nkash-blog --remote
+
+npx wrangler secret put SESSION_SECRET        # a different one from dev
+npx wrangler secret put OWNERS
+npx wrangler secret put GITHUB_CLIENT_ID
+npx wrangler secret put GITHUB_CLIENT_SECRET
+
+npm run deploy
 ```
 
 `wrangler.jsonc` declares `blogs.nkash.dev` as a custom domain, so the first deploy provisions
-the DNS record and the TLS certificate automatically — the zone is already in the same
-Cloudflare account. Or connect the repo in the dashboard (Workers & Pages → Create → Connect
-to Git) for push-to-deploy, and set the three secrets in the project's settings.
+the DNS record and the certificate automatically when the zone is in the same account.
 
-Subdomains are free and unlimited once the zone exists, so project demos live at
-`demo.nkash.dev` and friends.
+The `__Host-` cookie prefix binds the session to `blogs.nkash.dev` exactly. A future app on a
+sibling subdomain can't read it — that's the intended isolation, and it means sign-in doesn't
+carry across subdomains.
 
-One consequence of the `__Host-` cookie prefix: the session is bound to `blogs.nkash.dev`
-exactly and cannot be read by a sibling subdomain. That's the intended isolation — a
-compromised demo on `demo.nkash.dev` can't touch it — but it does mean signing in once won't
-carry across to other subdomains. Sharing a session would require dropping the prefix and
-setting `Domain=.nkash.dev`, which trades that isolation away; don't, unless you have a
-reason.
+### Backups
+
+```bash
+npm run db:backup        # production → backups/ (gitignored; dumps contain private posts)
+```
+
+D1's Time Travel already covers accidental deletes for 30 days and is always on. This is for
+what it doesn't cover: an account problem, a free-tier change, or wanting the data somewhere
+that isn't Cloudflare.
 
 ### Free-tier limits worth knowing
 
 - **100,000 Worker requests/day.** Static assets don't count, and public pages carry
-  `s-maxage=3600` so the edge serves them without invoking the Worker. It fails closed at the
-  cap rather than billing you.
+  `s-maxage=3600` so the edge serves them without invoking the Worker.
 - **10ms CPU per request.** Fine for auth and rendering, useless for anything compute-heavy —
   demos that need real work run off-platform and are linked from `/projects`.
-- **500 builds/month.**
+- **D1: 5 GB, 5M row reads/day, 100k writes/day.** Row reads count rows *examined*, not
+  returned, which is why every query path has a covering index.
+- **R2: 10 GB, no egress charges.**
 
 ---
 
@@ -178,28 +179,35 @@ reason.
 
 ```
 src/
-├── access.config.ts        who is an owner, who is in the circle
-├── content.config.ts       frontmatter schema; visibility defaults to private
+├── access.config.ts        parses OWNERS / CIRCLE from the environment
+├── content.config.ts       projects only; posts live in D1
 ├── middleware.ts           resolves the viewer once per request
-├── env.d.ts
 ├── lib/
 │   ├── visibility.ts       canView() — the only authorisation decision
+│   ├── membership.ts       env lists, then the members table
+│   ├── markdown.ts         render, slugify, excerpt, reading time
+│   ├── username.ts         handle validation and suggestions
 │   ├── cache.ts            public s-maxage vs private no-store
 │   ├── env.ts              the Cloudflare seam; rewrite this to move hosts
 │   ├── redirect.ts         open-redirect guard for ?next=
-│   └── auth/
-│       ├── session.ts      HMAC sign/verify, cookie attributes
-│       └── github.ts       OAuth, verified-email-only
+│   ├── auth/               sessions, OAuth, providers
+│   └── data/               D1 and R2 — the only code that names a binding
 ├── pages/
 │   ├── posts/[...slug].astro   the gate
+│   ├── admin/                  editor, post list, approval queue
+│   ├── welcome.astro           handle picker
 │   ├── sitemap.xml.ts          public tier only, never reads the session
 │   └── rss.xml.ts              same
-tests/                      auth core
-scripts/smoke.mjs           end-to-end tier checks
+migrations/                 D1 schema
+tests/                      auth core, markdown, handles
+scripts/                    smoke, walkthrough, backup, import
+docs/                       DECISIONS.md and the original architecture sketch
 ```
 
 Authentication and authorisation are deliberately separate: `middleware.ts` decides *who you
 are*, `visibility.ts` decides *what you may read*. One place to audit for each.
+
+`docs/DECISIONS.md` has the reasoning behind the choices above.
 
 ## Licence
 

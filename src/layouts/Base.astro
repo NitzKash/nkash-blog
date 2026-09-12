@@ -9,7 +9,7 @@ interface Props {
 }
 
 const { title, description, noindex = false } = Astro.props;
-const { viewer, audience, username } = Astro.locals;
+const { viewer, audience, username, memberStatus } = Astro.locals;
 
 // The handle is what gets shown once there is one — carrying a GitHub login or
 // a work email around the site is exactly what it exists to avoid.
@@ -60,6 +60,7 @@ const isCurrent = (href: string) => (href === '/' ? path === '/' : path.startsWi
     <div class="shell">
       <header class="masthead">
         <a class="wordmark" href="/">nkash<span>.dev</span></a>
+
         <nav aria-label="Primary">
           {
             nav.map((item) => (
@@ -68,6 +69,30 @@ const isCurrent = (href: string) => (href === '/' ? path === '/' : path.startsWi
               </a>
             ))
           }
+
+          {/* Account state sits top right, where a reader looks for it. Signed
+              out, it is the only call to action on the page. */}
+          <span class="account">
+            {
+              viewer ? (
+                <>
+                  {audience === 'owner' ? (
+                    <span class="handle">{displayName}</span>
+                  ) : (
+                    <a class="handle" href={`/welcome?next=${encodeURIComponent(path)}`} title="Change your handle">
+                      {displayName}
+                    </a>
+                  )}
+                  <span class="badge" data-audience={audience} data-status={memberStatus}>
+                    {audience === 'owner' ? 'owner' : audience === 'circle' ? 'circle' : memberStatus === 'blocked' ? 'no access' : 'pending'}
+                  </span>
+                  <a href={`/auth/logout?next=${encodeURIComponent(path)}`}>sign out</a>
+                </>
+              ) : (
+                <a class="signin" href={signInTarget}>sign in</a>
+              )
+            }
+          </span>
         </nav>
       </header>
 
@@ -75,28 +100,11 @@ const isCurrent = (href: string) => (href === '/' ? path === '/' : path.startsWi
         <slot />
       </main>
 
+      {/* Account state lives in the masthead, not here — a reader looking to
+          sign in should not have to reach the bottom of the page to find it. */}
       <footer class="colophon">
         <span>nkash · India</span>
-        <span>
-          {
-            viewer ? (
-              <>
-                {audience === 'owner' ? (
-                  displayName
-                ) : (
-                  <a href={`/welcome?next=${encodeURIComponent(path)}`} title="Change your handle">
-                    {displayName}
-                  </a>
-                )}
-                {audience !== 'anonymous' && ` · ${audience}`}
-                {' · '}
-                <a href={`/auth/logout?next=${encodeURIComponent(path)}`}>sign out</a>
-              </>
-            ) : (
-              <a href={signInTarget}>sign in</a>
-            )
-          }
-        </span>
+        <span><a href="/rss.xml">rss</a></span>
       </footer>
     </div>
   </body>

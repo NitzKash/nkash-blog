@@ -14,6 +14,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "smoke": "node scripts/smoke.mjs",
+    "walkthrough": "node scripts/walkthrough.mjs",
     "db:migrate": "wrangler d1 migrations apply nkash-blog --local",
     "db:migrate:remote": "wrangler d1 migrations apply nkash-blog --remote",
     "db:console": "wrangler d1 execute nkash-blog --local --command",

@@ -109,6 +109,70 @@ body {
   color: var(--text);
 }
 
+/* ---------- account, top right ---------- */
+
+.account {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding-inline-start: 1.25rem;
+  margin-inline-start: 0.25rem;
+  border-inline-start: 1px solid var(--border);
+}
+
+@media (max-width: 30rem) {
+  .account {
+    border-inline-start: 0;
+    padding-inline-start: 0;
+    margin-inline-start: 0;
+  }
+}
+
+.account .handle {
+  color: var(--text);
+  max-width: 14ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account .signin {
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  border-radius: 4px;
+  padding: 0.1875rem 0.5rem;
+}
+
+.account .signin:hover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+}
+
+.badge {
+  font-size: 0.625rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.0625rem 0.375rem;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  color: var(--text-faint);
+}
+
+.badge[data-audience='owner'] {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.badge[data-audience='circle'] {
+  color: var(--lock);
+  border-color: color-mix(in srgb, var(--lock) 35%, transparent);
+}
+
+.badge[data-status='pending'] {
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 35%, transparent);
+}
+
 /* ---------- index ---------- */
 
 .intro {
