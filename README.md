@@ -208,6 +208,7 @@ Authentication and authorisation are deliberately separate: `middleware.ts` deci
 are*, `visibility.ts` decides *what you may read*. One place to audit for each.
 
 `docs/DECISIONS.md` has the reasoning behind the choices above.
+[`CHANGELOG.md`](CHANGELOG.md) records what changed in each release.
 
 ## Licence
 
