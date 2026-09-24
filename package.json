@@ -21,6 +21,7 @@
     "db:path": "node -e \"const{readdirSync}=require('fs'),{join}=require('path');const d=join(process.cwd(),'.wrangler/state/v3/d1/miniflare-D1DatabaseObject');const f=readdirSync(d).find(f=>f.endsWith('.sqlite')&&!f.startsWith('metadata'));console.log(join(d,f))\"",
     "db:backup": "node scripts/backup.mjs",
     "db:backup:local": "node scripts/backup.mjs --local",
+    "db:snapshot": "node scripts/snapshot.mjs",
     "deploy": "astro build && wrangler deploy",
     "astro": "astro",
     "generate-types": "wrangler types"
