@@ -24,20 +24,30 @@
 		{
 			"binding": "DB",
 			"database_name": "nkash-blog",
-			"database_id": "00000000-0000-0000-0000-000000000000",
+			"database_id": "79de9314-32b8-4839-b3a4-77c029c7d013",
 			"migrations_dir": "migrations"
 		}
 	],
-	// Images and attachments. Create with:
+	// Images and attachments — not enabled yet.
+	//
+	// R2 requires a one-time activation in the Cloudflare dashboard that asks
+	// for a payment method, even though the free tier (10 GB, no egress fees)
+	// costs nothing. Nothing in the request path touches this binding until
+	// image upload is built, so it stays commented out rather than forcing a
+	// card on file for an unbuilt feature.
+	//
+	// To enable: activate R2 in the dashboard, then
 	//   npx wrangler r2 bucket create nkash-blog-media
-	// Deliberately not given a public r2.dev URL: objects are served through the
-	// Worker so the same canView() decision that gates a post gates its images.
-	"r2_buckets": [
-		{
-			"binding": "MEDIA",
-			"bucket_name": "nkash-blog-media"
-		}
-	],
+	// and uncomment. Deliberately no public r2.dev URL — objects are served
+	// through the Worker so the same canView() that gates a post gates its
+	// images.
+	//
+	// "r2_buckets": [
+	// 	{
+	// 		"binding": "MEDIA",
+	// 		"bucket_name": "nkash-blog-media"
+	// 	}
+	// ],
 	"observability": {
 		"enabled": true
 	}

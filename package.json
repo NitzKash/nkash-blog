@@ -18,6 +18,7 @@
     "db:migrate": "wrangler d1 migrations apply nkash-blog --local",
     "db:migrate:remote": "wrangler d1 migrations apply nkash-blog --remote",
     "db:console": "wrangler d1 execute nkash-blog --local --command",
+    "db:path": "node -e \"const{readdirSync}=require('fs'),{join}=require('path');const d=join(process.cwd(),'.wrangler/state/v3/d1/miniflare-D1DatabaseObject');const f=readdirSync(d).find(f=>f.endsWith('.sqlite')&&!f.startsWith('metadata'));console.log(join(d,f))\"",
     "db:backup": "node scripts/backup.mjs",
     "db:backup:local": "node scripts/backup.mjs --local",
     "deploy": "astro build && wrangler deploy",
