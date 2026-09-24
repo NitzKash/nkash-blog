@@ -61,6 +61,21 @@ New members are offered a **handle**, so they don't have to carry a GitHub login
 around the site. The provider identity stays visible only to an owner deciding whether to
 approve them.
 
+### Comments
+
+Approved members and owners can comment and vote; everyone who can read a post can read its
+thread. Comments inherit the post's visibility rather than carrying their own, so there is one
+authorisation decision rather than two that can drift apart.
+
+Votes show a total and never who voted — but a per-member row exists underneath, because
+without one a single person could vote repeatedly. Voting the same way twice retracts it.
+
+Comments are the only untrusted HTML on the site and deliberately never touch the renderer used
+for post bodies, which allows raw HTML on the reasoning that the author is the operator.
+`lib/comment-markdown.ts` escapes every character *before* applying any formatting, so no point
+exists at which attacker-supplied markup is in the string being built. Bold, italic, code and
+bare links are supported; images, headings, raw HTML and arbitrary link text are not.
+
 ---
 
 ## Running it
@@ -73,8 +88,8 @@ npm run dev                        # http://localhost:4321
 ```
 
 ```bash
-npm test              # 73 unit tests over the auth core
-npm run smoke         # 39 end-to-end tier checks
+npm test              # 108 unit tests over the auth core and the comment renderer
+npm run smoke         # 55 end-to-end checks across tiers, comments and votes
 npm run walkthrough   # prints a new reader's whole journey, step by step
 npm run check         # types
 ```
@@ -135,16 +150,21 @@ browser.
 ```bash
 npx wrangler login
 npx wrangler d1 create nkash-blog            # paste the id into wrangler.jsonc
-npx wrangler r2 bucket create nkash-blog-media
 npx wrangler d1 migrations apply nkash-blog --remote
 
 npx wrangler secret put SESSION_SECRET        # a different one from dev
 npx wrangler secret put OWNERS
 npx wrangler secret put GITHUB_CLIENT_ID
 npx wrangler secret put GITHUB_CLIENT_SECRET
+npx wrangler secret put GOOGLE_CLIENT_ID      # optional
+npx wrangler secret put GOOGLE_CLIENT_SECRET  # optional
 
 npm run deploy
 ```
+
+R2 is **not** part of this: its binding is commented out in `wrangler.jsonc` because enabling
+R2 needs a one-time dashboard activation that asks for a payment method, and nothing in the
+request path touches it until image upload exists. Uncomment and create the bucket then.
 
 `wrangler.jsonc` declares `blogs.nkash.dev` as a custom domain, so the first deploy provisions
 the DNS record and the certificate automatically when the zone is in the same account.
@@ -171,7 +191,7 @@ that isn't Cloudflare.
   demos that need real work run off-platform and are linked from `/projects`.
 - **D1: 5 GB, 5M row reads/day, 100k writes/day.** Row reads count rows *examined*, not
   returned, which is why every query path has a covering index.
-- **R2: 10 GB, no egress charges.**
+- **R2: 10 GB, no egress charges** — not enabled yet, see above.
 
 ---
 
