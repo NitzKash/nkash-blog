@@ -1,5 +1,12 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { createSession, readSession, sessionCookie, SESSION_COOKIE } from '../src/lib/auth/session';
+import {
+  createSession,
+  readSession,
+  sessionCookie,
+  clearedSessionCookie,
+  sessionCookieName,
+  SESSION_COOKIE,
+} from '../src/lib/auth/session';
 
 const SECRET = 'test-secret-not-used-anywhere-real';
 const OTHER_SECRET = 'a-different-secret-entirely';
@@ -87,10 +94,12 @@ describe('session rejection', () => {
 });
 
 describe('cookie attributes', () => {
-  const cookie = sessionCookie('token-value');
+  const prod = new URL('https://blogs.nkash.dev/posts/x');
+  const cookie = sessionCookie('token-value', prod);
 
   it('uses the __Host- prefix, which forces Secure + Path=/ + no Domain', () => {
     expect(SESSION_COOKIE).toBe('__Host-session');
+    expect(sessionCookieName(prod)).toBe('__Host-session');
     expect(cookie).toContain('Path=/');
     expect(cookie).toContain('Secure');
     expect(cookie).not.toContain('Domain=');
@@ -99,5 +108,41 @@ describe('cookie attributes', () => {
   it('is not readable from JavaScript and does not ride cross-site requests', () => {
     expect(cookie).toContain('HttpOnly');
     expect(cookie).toContain('SameSite=Lax');
+  });
+
+  // Safari refuses Secure cookies over http://localhost, which silently breaks
+  // sign-in in local development. curl enforces nothing, so this has to be
+  // asserted rather than observed.
+  it('drops Secure and the __Host- prefix on loopback http', () => {
+    for (const origin of ['http://localhost:4321', 'http://127.0.0.1:4321']) {
+      const url = new URL(`${origin}/`);
+      expect(sessionCookieName(url)).toBe('session');
+      const dev = sessionCookie('token-value', url);
+      expect(dev).not.toContain('Secure');
+      expect(dev).toContain('HttpOnly');
+      expect(dev).toContain('SameSite=Lax');
+    }
+  });
+
+  // The relaxed branch must be unreachable anywhere that is not loopback http.
+  it('keeps Secure everywhere else, including https on localhost', () => {
+    for (const origin of [
+      'https://localhost:4321',
+      'https://blogs.nkash.dev',
+      'http://blogs.nkash.dev',
+      'http://192.168.1.10:4321',
+      'http://localhost.evil.example.com',
+    ]) {
+      const url = new URL(`${origin}/`);
+      expect(sessionCookieName(url), origin).toBe('__Host-session');
+      expect(sessionCookie('t', url), origin).toContain('Secure');
+    }
+  });
+
+  it('clears under the same name it set', () => {
+    const dev = new URL('http://localhost:4321/');
+    expect(clearedSessionCookie(dev).startsWith('session=')).toBe(true);
+    expect(clearedSessionCookie(prod).startsWith('__Host-session=')).toBe(true);
+    expect(clearedSessionCookie(prod)).toContain('Max-Age=0');
   });
 });

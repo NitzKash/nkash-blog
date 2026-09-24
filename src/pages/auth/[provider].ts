@@ -37,7 +37,7 @@ export const GET: APIRoute = ({ url, params }) => {
     status: 302,
     headers: {
       Location: provider.authorizeUrl(clientId, redirectUri, state),
-      'Set-Cookie': stateCookie(state),
+      'Set-Cookie': stateCookie(state, url),
       'Cache-Control': 'private, no-store',
     },
   });

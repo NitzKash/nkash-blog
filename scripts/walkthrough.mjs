@@ -13,6 +13,15 @@ import { execFileSync } from 'node:child_process';
 import { mint, ownerIdentity } from './mint-session.mjs';
 
 const BASE = 'http://localhost:4321';
+
+/**
+ * The server drops the `__Host-` prefix on loopback http, because Safari
+ * refuses Secure cookies there. Deriving the name the same way means these
+ * scripts send what a browser would actually send.
+ */
+const COOKIE_NAME = /^http:\/\/(localhost|127\.0\.0\.1)(:|$)/.test(BASE)
+  ? 'session'
+  : '__Host-session';
 const RUN = Math.random().toString(36).slice(2, 6);
 const FRIEND_SUB = `github:demo-${RUN}`;
 const POST = `walkthrough-${RUN}`;
@@ -33,7 +42,7 @@ const sql = (statement) =>
 async function get(path, cookie) {
   const r = await fetch(`${BASE}${path}`, {
     redirect: 'manual',
-    headers: cookie ? { Cookie: `__Host-session=${cookie}` } : {},
+    headers: cookie ? { Cookie: `${COOKIE_NAME}=${cookie}` } : {},
   });
   return { status: r.status, body: await r.text(), location: r.headers.get('location') };
 }
@@ -43,7 +52,7 @@ async function post(path, fields, cookie) {
     method: 'POST',
     redirect: 'manual',
     headers: {
-      Cookie: `__Host-session=${cookie}`,
+      Cookie: `${COOKIE_NAME}=${cookie}`,
       Origin: BASE,
       'Content-Type': 'application/x-www-form-urlencoded',
     },

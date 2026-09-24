@@ -25,13 +25,28 @@ export interface Provider {
 }
 
 export const OAUTH_STATE_COOKIE = '__Host-oauth-state';
+export const OAUTH_STATE_COOKIE_DEV = 'oauth-state';
 
-export function stateCookie(value: string): string {
-  return `${OAUTH_STATE_COOKIE}=${value}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=600`;
+/** See the note in session.ts — Safari drops Secure cookies on http://localhost. */
+function isLoopbackHttp(url: URL): boolean {
+  return (
+    url.protocol === 'http:' &&
+    (url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '[::1]')
+  );
 }
 
-export function clearedStateCookie(): string {
-  return `${OAUTH_STATE_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`;
+export function stateCookieName(url: URL): string {
+  return isLoopbackHttp(url) ? OAUTH_STATE_COOKIE_DEV : OAUTH_STATE_COOKIE;
+}
+
+export function stateCookie(value: string, url: URL): string {
+  const secure = isLoopbackHttp(url) ? '' : ' Secure;';
+  return `${stateCookieName(url)}=${value}; Path=/; HttpOnly;${secure} SameSite=Lax; Max-Age=600`;
+}
+
+export function clearedStateCookie(url: URL): string {
+  const secure = isLoopbackHttp(url) ? '' : ' Secure;';
+  return `${stateCookieName(url)}=; Path=/; HttpOnly;${secure} SameSite=Lax; Max-Age=0`;
 }
 
 export function newNonce(): string {

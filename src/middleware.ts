@@ -1,5 +1,5 @@
 import { defineMiddleware } from 'astro:middleware';
-import { readSession, SESSION_COOKIE } from './lib/auth/session';
+import { readSession, sessionCookieName } from './lib/auth/session';
 import { readEnv } from './lib/env';
 import { resolveMembership } from './lib/membership';
 import { securityHeaders } from './lib/cache';
@@ -21,7 +21,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
   const secret = readEnv('SESSION_SECRET');
 
   const viewer = secret
-    ? await readSession(context.cookies.get(SESSION_COOKIE)?.value, secret)
+    ? await readSession(context.cookies.get(sessionCookieName(context.url))?.value, secret)
     : null;
 
   const membership = await resolveMembership(viewer);

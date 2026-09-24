@@ -20,6 +20,15 @@ import { mint, ownerIdentity } from './mint-session.mjs';
 
 const BASE = process.env.SMOKE_BASE ?? 'http://localhost:4321';
 
+/**
+ * The server drops the `__Host-` prefix on loopback http, because Safari
+ * refuses Secure cookies there. Deriving the name the same way means these
+ * scripts send what a browser would actually send.
+ */
+const COOKIE_NAME = /^http:\/\/(localhost|127\.0\.0\.1)(:|$)/.test(BASE)
+  ? 'session'
+  : '__Host-session';
+
 const RUN = Math.random().toString(36).slice(2, 8);
 const FIXTURES = {
   public: { slug: `smoke-${RUN}-public`, title: `Smoke public ${RUN}`, visibility: 'public' },
@@ -41,7 +50,7 @@ function check(name, condition, detail = '') {
 async function get(path, cookie) {
   const response = await fetch(`${BASE}${path}`, {
     redirect: 'manual',
-    headers: cookie ? { Cookie: `__Host-session=${cookie}` } : {},
+    headers: cookie ? { Cookie: `${COOKIE_NAME}=${cookie}` } : {},
   });
   return { status: response.status, body: await response.text(), headers: response.headers };
 }
@@ -61,7 +70,7 @@ async function save(fields) {
     method: 'POST',
     redirect: 'manual',
     headers: {
-      Cookie: `__Host-session=${ownerCookie}`,
+      Cookie: `${COOKIE_NAME}=${ownerCookie}`,
       Origin: BASE,
       'Content-Type': 'application/x-www-form-urlencoded',
     },

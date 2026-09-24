@@ -14,8 +14,36 @@ import type { Viewer } from '../visibility';
  * once, immediately.
  */
 
-export const SESSION_COOKIE = '__Host-session';
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
+
+/**
+ * Cookie naming and attributes depend on whether the request is secure.
+ *
+ * `__Host-` is the right prefix and it requires `Secure`. But Safari refuses
+ * `Secure` cookies over `http://localhost`, which silently drops every cookie
+ * in local development and makes sign-in impossible to test in that browser.
+ * Chrome and Firefox allow it, which is why this hid for so long — and why
+ * `curl`, which enforces nothing, kept the suite green.
+ *
+ * The relaxed branch is deliberately narrow: plain http **and** a loopback
+ * host. It cannot fire in production, because `.dev` is in the HSTS preload
+ * list and `blogs.nkash.dev` is therefore unreachable over http by
+ * construction. On a loopback address there is no network for `Secure` to
+ * protect against anyway.
+ */
+function isLoopbackHttp(url: URL): boolean {
+  return (
+    url.protocol === 'http:' &&
+    (url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '[::1]')
+  );
+}
+
+export const SESSION_COOKIE = '__Host-session';
+export const SESSION_COOKIE_DEV = 'session';
+
+export function sessionCookieName(url: URL): string {
+  return isLoopbackHttp(url) ? SESSION_COOKIE_DEV : SESSION_COOKIE;
+}
 
 interface SessionPayload extends Viewer {
   /** Issued-at and expiry, seconds since epoch. */
@@ -107,21 +135,23 @@ export async function readSession(token: string | undefined, secret: string): Pr
 }
 
 /**
- * `__Host-` prefixed cookies are rejected by the browser unless they are
- * Secure, Path=/ and have no Domain attribute — which also means they cannot be
- * set by, or leak to, a sibling subdomain like demo.nkash.dev.
+ * In production this is `__Host-` prefixed, which browsers reject unless the
+ * cookie is Secure, Path=/ and has no Domain — and which also means it cannot
+ * be set by, or leak to, a sibling subdomain like demo.nkash.dev.
  */
-export function sessionCookie(token: string): string {
-  return [
-    `${SESSION_COOKIE}=${token}`,
+export function sessionCookie(token: string, url: URL): string {
+  const parts = [
+    `${sessionCookieName(url)}=${token}`,
     'Path=/',
     'HttpOnly',
-    'Secure',
     'SameSite=Lax',
     `Max-Age=${SESSION_TTL_SECONDS}`,
-  ].join('; ');
+  ];
+  if (!isLoopbackHttp(url)) parts.splice(3, 0, 'Secure');
+  return parts.join('; ');
 }
 
-export function clearedSessionCookie(): string {
-  return `${SESSION_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`;
+export function clearedSessionCookie(url: URL): string {
+  const secure = isLoopbackHttp(url) ? '' : ' Secure;';
+  return `${sessionCookieName(url)}=; Path=/; HttpOnly;${secure} SameSite=Lax; Max-Age=0`;
 }

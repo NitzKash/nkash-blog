@@ -5,7 +5,7 @@ import {
   clearedStateCookie,
   credentialKeys,
   decodeState,
-  OAUTH_STATE_COOKIE,
+  stateCookieName,
   timingSafeEqual,
 } from '../../lib/auth/oauth';
 import { createSession, sessionCookie } from '../../lib/auth/session';
@@ -14,12 +14,12 @@ import { safeRedirect } from '../../lib/redirect';
 
 export const prerender = false;
 
-function failure(message: string): Response {
+function failure(message: string, url: URL): Response {
   return new Response(null, {
     status: 302,
     headers: {
       Location: `/login?error=${encodeURIComponent(message)}`,
-      'Set-Cookie': clearedStateCookie(),
+      'Set-Cookie': clearedStateCookie(url),
       'Cache-Control': 'private, no-store',
     },
   });
@@ -29,22 +29,22 @@ function failure(message: string): Response {
 export const GET: APIRoute = async ({ url, cookies }) => {
   const code = url.searchParams.get('code');
   const returnedState = url.searchParams.get('state');
-  const storedState = cookies.get(OAUTH_STATE_COOKIE)?.value;
+  const storedState = cookies.get(stateCookieName(url))?.value;
 
-  if (url.searchParams.get('error')) return failure('The sign-in request was declined.');
-  if (!code || !returnedState) return failure('Malformed callback.');
+  if (url.searchParams.get('error')) return failure('The sign-in request was declined.', url);
+  if (!code || !returnedState) return failure('Malformed callback.', url);
 
   // Compare the whole state string, not just the nonce, so neither the
   // provider nor the destination can be swapped after the fact.
   if (!storedState || !timingSafeEqual(returnedState, storedState)) {
-    return failure('Sign-in request expired or did not match. Try again.');
+    return failure('Sign-in request expired or did not match. Try again.', url);
   }
 
   const state = decodeState(storedState);
-  if (!state) return failure('Malformed sign-in state.');
+  if (!state) return failure('Malformed sign-in state.', url);
 
   const provider = getProvider(state.provider);
-  if (!provider) return failure('Unknown sign-in provider.');
+  if (!provider) return failure('Unknown sign-in provider.', url);
 
   const keys = credentialKeys(provider.id);
 
@@ -58,7 +58,7 @@ export const GET: APIRoute = async ({ url, cookies }) => {
     );
   } catch (error) {
     console.error(`${provider.id} OAuth exchange failed`, error);
-    return failure(`Could not complete sign-in with ${provider.label}.`);
+    return failure(`Could not complete sign-in with ${provider.label}.`, url);
   }
 
   // Note: everyone who authenticates gets a session, including people on no
@@ -82,8 +82,8 @@ export const GET: APIRoute = async ({ url, cookies }) => {
     Location: destination,
     'Cache-Control': 'private, no-store',
   });
-  headers.append('Set-Cookie', sessionCookie(token));
-  headers.append('Set-Cookie', clearedStateCookie());
+  headers.append('Set-Cookie', sessionCookie(token, url));
+  headers.append('Set-Cookie', clearedStateCookie(url));
 
   return new Response(null, { status: 302, headers });
 };
