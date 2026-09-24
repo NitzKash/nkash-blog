@@ -10,5 +10,8 @@
 export * as posts from './posts';
 export * as projects from './projects';
 export * as assets from './assets';
+export * as comments from './comments';
+export * as members from './members';
 export { storageConfigured } from './bindings';
 export type { Post, Project } from './types';
+export type { Comment } from './comments';

@@ -1,0 +1,308 @@
+---
+import { comments as commentStore } from '../lib/data';
+import { MAX_COMMENT_LENGTH } from '../lib/comment-markdown';
+import type { Audience } from '../lib/visibility';
+import type { MemberStatus } from '../lib/data/members';
+
+interface Props {
+  postSlug: string;
+  audience: Audience;
+  memberStatus?: MemberStatus;
+  signedIn: boolean;
+  viewerId?: string;
+}
+
+const { postSlug, audience, memberStatus, signedIn, viewerId } = Astro.props;
+
+// Only approved members and owners may write. Everyone who can see the post
+// can read the thread — visibility is inherited from the post, so reaching
+// this component at all already means canView() said yes.
+const canWrite = audience === 'circle' || audience === 'owner';
+const isOwner = audience === 'owner';
+
+let thread: Awaited<ReturnType<typeof commentStore.list>> = [];
+let storageError = false;
+
+try {
+  thread = await commentStore.list(postSlug, isOwner, viewerId ?? '');
+} catch (error) {
+  console.error('could not load comments', error);
+  storageError = true;
+}
+
+const error = Astro.url.searchParams.get('commentError');
+const draft = Astro.url.searchParams.get('draft') ?? '';
+
+const when = new Intl.DateTimeFormat('en-GB', {
+  day: '2-digit',
+  month: 'short',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+  timeZone: 'UTC',
+});
+
+const signInHref = `/login?next=${encodeURIComponent(Astro.url.pathname)}`;
+---
+
+<section class="comments" id="comments">
+  <p class="section-label">
+    {thread.length === 0 ? 'Comments' : `${thread.length} comment${thread.length === 1 ? '' : 's'}`}
+  </p>
+
+  {
+    storageError ? (
+      <p class="empty">Comments are unavailable right now.</p>
+    ) : thread.length === 0 ? (
+      <p class="empty">Nothing yet.</p>
+    ) : (
+      <ol class="thread">
+        {thread.map((comment) => (
+          <li class="comment" data-hidden={comment.hidden ? 'true' : undefined} id={`c-${comment.id}`}>
+            <div class="comment-head">
+              <span class="comment-author">{comment.author}</span>
+              <time datetime={comment.createdAt.toISOString()}>{when.format(comment.createdAt)}</time>
+              {comment.hidden && <span class="tier" data-tier="private">hidden</span>}
+              {isOwner && (
+                <form method="POST" action="/comments/moderate" class="moderate">
+                  <input type="hidden" name="id" value={comment.id} />
+                  <input type="hidden" name="slug" value={postSlug} />
+                  <button type="submit" name="action" value={comment.hidden ? 'show' : 'hide'}>
+                    {comment.hidden ? 'unhide' : 'hide'}
+                  </button>
+                </form>
+              )}
+            </div>
+            {/* Rendered by lib/comment-markdown.ts, which escapes before it
+                formats — this is the only untrusted HTML on the site. */}
+            <div class="comment-body" set:html={comment.html} />
+
+            <div class="votes">
+              {
+                canWrite ? (
+                  <form method="POST" action="/comments/vote">
+                    <input type="hidden" name="id" value={comment.id} />
+                    <button
+                      type="submit"
+                      name="direction"
+                      value="up"
+                      aria-pressed={comment.myVote === 1}
+                      title={comment.myVote === 1 ? 'Retract your upvote' : 'Upvote'}
+                    >
+                      ▲ {comment.upvotes}
+                    </button>
+                    <button
+                      type="submit"
+                      name="direction"
+                      value="down"
+                      aria-pressed={comment.myVote === -1}
+                      title={comment.myVote === -1 ? 'Retract your downvote' : 'Downvote'}
+                    >
+                      ▼ {comment.downvotes}
+                    </button>
+                  </form>
+                ) : (
+                  <span class="votes-readonly">▲ {comment.upvotes} · ▼ {comment.downvotes}</span>
+                )
+              }
+            </div>
+          </li>
+        ))}
+      </ol>
+    )
+  }
+
+  {
+    canWrite ? (
+      <form method="POST" action="/comments/add" class="comment-form">
+        <input type="hidden" name="slug" value={postSlug} />
+        {error && <p class="comment-error">{error}</p>}
+        <label>
+          <span class="visually-hidden">Your comment</span>
+          <textarea
+            name="body"
+            rows="4"
+            maxlength={MAX_COMMENT_LENGTH}
+            required
+            placeholder="**bold**, *italic*, `code`, and links. Nothing else."
+          >{draft}</textarea>
+        </label>
+        <div class="comment-actions">
+          <button class="button" type="submit">Post comment</button>
+          <span class="comment-hint">Markdown is limited on purpose. Links get nofollow.</span>
+        </div>
+      </form>
+    ) : signedIn ? (
+      <p class="empty">
+        {memberStatus === 'blocked'
+          ? 'Commenting is closed for your account.'
+          : "You'll be able to comment once nkash approves you."}
+      </p>
+    ) : (
+      <p class="empty">
+        <a href={signInHref}>Sign in</a> to comment — approved readers only.
+      </p>
+    )
+  }
+</section>
+
+<style>
+  .comments {
+    border-block-start: 1px solid var(--border);
+    padding-block: 2.5rem 4rem;
+    margin-block-start: 1rem;
+  }
+
+  .thread {
+    list-style: none;
+    margin: 0 0 2rem;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+
+  .comment[data-hidden] {
+    opacity: 0.5;
+  }
+
+  .comment-head {
+    display: flex;
+    align-items: baseline;
+    gap: 0.625rem;
+    flex-wrap: wrap;
+    margin-block-end: 0.375rem;
+  }
+
+  .comment-author {
+    font-family: var(--mono);
+    font-size: 0.8125rem;
+    color: var(--text);
+  }
+
+  .comment-head time {
+    font-family: var(--mono);
+    font-size: 0.6875rem;
+    color: var(--text-faint);
+  }
+
+  .moderate button {
+    font-family: var(--mono);
+    font-size: 0.625rem;
+    background: none;
+    border: 0;
+    color: var(--text-faint);
+    cursor: pointer;
+    padding: 0;
+    text-decoration: underline;
+  }
+
+  .moderate button:hover {
+    color: var(--warn);
+  }
+
+  .comment-body :global(p) {
+    margin: 0 0 0.5rem;
+    font-size: 0.9375rem;
+    line-height: 1.65;
+  }
+
+  .comment-body :global(p:last-child) {
+    margin-block-end: 0;
+  }
+
+  .comment-body :global(a) {
+    color: var(--accent);
+  }
+
+  .comment-body :global(code) {
+    font-family: var(--mono);
+    font-size: 0.8125em;
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 0.1em 0.35em;
+  }
+
+  .votes {
+    margin-block-start: 0.5rem;
+  }
+
+  .votes form {
+    display: inline-flex;
+    gap: 0.375rem;
+  }
+
+  .votes button {
+    font-family: var(--mono);
+    font-size: 0.6875rem;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.125rem 0.4375rem;
+    color: var(--text-faint);
+    cursor: pointer;
+  }
+
+  .votes button:hover {
+    color: var(--text);
+    border-color: var(--text-faint);
+  }
+
+  /* Your own vote reads as pressed, which is also how you know clicking again
+     retracts it rather than adding another. */
+  .votes button[aria-pressed='true'] {
+    color: var(--accent);
+    border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  }
+
+  .votes-readonly {
+    font-family: var(--mono);
+    font-size: 0.6875rem;
+    color: var(--text-faint);
+  }
+
+  .comment-form textarea {
+    width: 100%;
+    font-family: var(--mono);
+    font-size: 0.875rem;
+    line-height: 1.6;
+    color: var(--text);
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.625rem 0.75rem;
+    resize: vertical;
+  }
+
+  .comment-form textarea:focus-visible {
+    border-color: var(--accent);
+  }
+
+  .comment-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.875rem;
+    margin-block-start: 0.625rem;
+    flex-wrap: wrap;
+  }
+
+  .comment-hint {
+    font-size: 0.75rem;
+    color: var(--text-faint);
+  }
+
+  .comment-error {
+    color: var(--warn);
+    font-size: 0.875rem;
+    margin: 0 0 0.5rem;
+  }
+
+  .visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+</style>

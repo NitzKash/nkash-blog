@@ -16,7 +16,14 @@
  * do not.
  */
 
+import { execFileSync } from 'node:child_process';
 import { mint, ownerIdentity } from './mint-session.mjs';
+
+const sql = (statement) =>
+  execFileSync('npx', ['wrangler', 'd1', 'execute', 'nkash-blog', '--local', '--command', statement], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'ignore'],
+  });
 
 const BASE = process.env.SMOKE_BASE ?? 'http://localhost:4321';
 
@@ -275,6 +282,122 @@ try {
     (await get(privatePath, mint(OWNER, 'wrong-secret'))).status === 404,
   );
   check('garbage in the cookie degrades to anonymous', (await get('/', '....')).status === 200);
+
+  // -------------------------------------------------------------------------
+  // Comments — the only untrusted content on the site.
+  // -------------------------------------------------------------------------
+  console.log('\nComments:');
+
+  const FRIEND = `github:smoke-${RUN}`;
+  const friendCookie = mint({ sub: FRIEND, login: `friend-${RUN}` });
+  sql(
+    `INSERT INTO members (id, provider, login, status, requested_at, last_seen_at)
+     VALUES ('${FRIEND}', 'github', 'friend-${RUN}', 'approved', datetime('now'), datetime('now'))`,
+  );
+
+  const pub = `/posts/${FIXTURES.public.slug}`;
+
+  async function comment(body, cookie) {
+    const r = await fetch(`${BASE}/comments/add`, {
+      method: 'POST',
+      redirect: 'manual',
+      headers: {
+        Cookie: `${COOKIE_NAME}=${cookie}`,
+        Origin: BASE,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({ slug: FIXTURES.public.slug, body }),
+    });
+    return r.status;
+  }
+
+  check('an approved member can comment', (await comment(`hello from ${RUN}`, friendCookie)) === 303);
+  check('the comment appears on the post', (await get(pub)).body.includes(`hello from ${RUN}`));
+
+  check(
+    'an anonymous visitor cannot comment',
+    (await fetch(`${BASE}/comments/add`, {
+      method: 'POST',
+      redirect: 'manual',
+      headers: { Origin: BASE, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ slug: FIXTURES.public.slug, body: 'nope' }),
+    }).then((r) => r.status)) === 404,
+  );
+
+  check('a signed-in non-member cannot comment', (await comment('nope', strangerCookie)) === 404);
+
+  // The property the whole escape-first renderer exists for.
+  await comment(`<img src=x onerror=alert(${RUN})> <b>bold</b>`, friendCookie);
+  const xss = await get(pub);
+  check('script markup in a comment is not rendered as markup', !/<img |<b>/i.test(xss.body));
+  check('it survives as escaped text instead', xss.body.includes('&lt;img'));
+
+  // Votes
+  const commentId = sql(
+    `SELECT id FROM comments WHERE post_slug = '${FIXTURES.public.slug}' ORDER BY created_at LIMIT 1`,
+  ).match(/"id":\s*"([^"]+)"/)?.[1];
+
+  async function vote(direction, cookie) {
+    const r = await fetch(`${BASE}/comments/vote`, {
+      method: 'POST',
+      redirect: 'manual',
+      headers: {
+        Cookie: `${COOKIE_NAME}=${cookie}`,
+        Origin: BASE,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({ id: commentId, direction }),
+    });
+    return r.status;
+  }
+
+  const tally = () => {
+    const out = sql(
+      `SELECT COALESCE(SUM(CASE WHEN value=1 THEN 1 ELSE 0 END),0) AS up,
+              COALESCE(SUM(CASE WHEN value=-1 THEN 1 ELSE 0 END),0) AS down
+       FROM comment_votes WHERE comment_id = '${commentId}'`,
+    );
+    return {
+      up: Number(out.match(/"up":\s*(\d+)/)?.[1] ?? -1),
+      down: Number(out.match(/"down":\s*(\d+)/)?.[1] ?? -1),
+    };
+  };
+
+  check('an approved member can upvote', (await vote('up', friendCookie)) === 303);
+  check('the upvote is counted', tally().up === 1);
+
+  await vote('up', ownerCookie);
+  check('a second member adds to the tally', tally().up === 2);
+
+  // Voting twice must not accumulate — the composite key is what enforces it.
+  await vote('up', friendCookie);
+  check('voting the same way again retracts rather than stacking', tally().up === 1);
+
+  await vote('down', ownerCookie);
+  const t = tally();
+  check('switching direction moves the vote, not adds one', t.up === 0 && t.down === 1);
+
+  check('a signed-in non-member cannot vote', (await vote('up', strangerCookie)) === 404);
+  check('an anonymous visitor cannot vote', (await vote('up', '....')) === 404);
+
+  // Moderation
+  const hide = await fetch(`${BASE}/comments/moderate`, {
+    method: 'POST',
+    redirect: 'manual',
+    headers: {
+      Cookie: `${COOKIE_NAME}=${ownerCookie}`,
+      Origin: BASE,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: new URLSearchParams({ id: commentId, slug: FIXTURES.public.slug, action: 'hide' }),
+  });
+  check('the owner can hide a comment', hide.status === 303);
+  check('a hidden comment disappears for everyone else', !(await get(pub)).body.includes(`hello from ${RUN}`));
+  check('the owner still sees it, to undo', (await get(pub, ownerCookie)).body.includes(`hello from ${RUN}`));
+
+  sql(`DELETE FROM comment_votes WHERE comment_id = '${commentId}'`);
+  sql(`DELETE FROM comments WHERE post_slug = '${FIXTURES.public.slug}'`);
+  sql(`DELETE FROM members WHERE id = '${FRIEND}'`);
 } finally {
   await tearDown();
 }

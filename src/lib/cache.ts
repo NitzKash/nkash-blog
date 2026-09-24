@@ -19,6 +19,20 @@ export function publicCacheHeaders(): Record<string, string> {
   };
 }
 
+/**
+ * Post pages get a shorter shared lifetime than listings, because a post now
+ * carries a comment thread and an hour-old cache would mean an hour-old
+ * conversation. Five minutes still means an edge location wakes the Worker at
+ * most twelve times an hour for a given post, which is nothing against a
+ * budget of 100,000 a day.
+ */
+export function publicPostCacheHeaders(): Record<string, string> {
+  return {
+    'Cache-Control': 'public, max-age=0, s-maxage=300, stale-while-revalidate=3600',
+    Vary: 'Cookie',
+  };
+}
+
 export function privateCacheHeaders(): Record<string, string> {
   return {
     'Cache-Control': 'private, no-store, no-cache, must-revalidate',

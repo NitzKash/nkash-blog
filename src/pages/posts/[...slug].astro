@@ -3,8 +3,9 @@ import Base from '../../layouts/Base.astro';
 import Tier from '../../components/Tier.astro';
 import SignIn from '../../components/SignIn.astro';
 import { posts as postStore } from '../../lib/data';
+import Comments from '../../components/Comments.astro';
 import { canView } from '../../lib/visibility';
-import { publicCacheHeaders, privateCacheHeaders } from '../../lib/cache';
+import { publicPostCacheHeaders, privateCacheHeaders } from '../../lib/cache';
 
 const { viewer, audience, memberStatus } = Astro.locals;
 const { slug } = Astro.params;
@@ -30,7 +31,8 @@ if (hideEntirely) return new Response(null, { status: 404 });
 const isPublic = post.data.visibility === 'public' && !post.data.draft;
 
 if (allowed) {
-  const headers = isPublic && audience === 'anonymous' ? publicCacheHeaders() : privateCacheHeaders();
+  const headers =
+    isPublic && audience === 'anonymous' ? publicPostCacheHeaders() : privateCacheHeaders();
   for (const [key, value] of Object.entries(headers)) Astro.response.headers.set(key, value);
 } else {
   for (const [key, value] of Object.entries(privateCacheHeaders())) {
@@ -72,6 +74,14 @@ const dateFormat = new Intl.DateTimeFormat('en-GB', {
         {/* Rendered at save time, by the author, who is always an owner. */}
         <div class="prose" set:html={post.html} />
       </article>
+
+      <Comments
+        postSlug={post.id}
+        audience={audience}
+        memberStatus={memberStatus}
+        signedIn={Boolean(viewer)}
+        viewerId={viewer?.sub}
+      />
     ) : (
       <div class="notice">
         <h2>This one's not public.</h2>
