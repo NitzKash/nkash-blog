@@ -18,6 +18,37 @@ Nothing yet.
 
 ---
 
+## [1.1.0] — 2026-09-26
+
+### Added
+
+- **Six colour themes** — Auto, Midnight, Forest, Rose, Sand and Mono — chosen from swatches in
+  the footer and remembered between visits. **Auto is the default and follows your system**, so
+  a reader who never touches the control gets something suited to their machine rather than the
+  author's preference.
+- Contrast is now verified rather than eyeballed: every palette is checked against WCAG AA
+  straight from the stylesheet, so a future theme cannot quietly become unreadable. Body text,
+  secondary text and links must clear 4.5:1, metadata 3:1, including against raised surfaces.
+- A `prefers-reduced-motion` guard covering the whole site. It overrides any theme, because
+  someone who turned that on did so deliberately.
+
+### Changed
+
+- **Anyone signed in can comment on a post they can read.** Commenting was approved-members-only,
+  which meant a reader who signed in to reply on a fully public post was told to wait for
+  approval. Circle and private posts are unchanged, and blocking still prevents commenting
+  everywhere.
+- Body type is slightly larger and more loosely set, which was the better half of the old
+  Simple mode.
+
+### Removed
+
+- The **Simple / Minimal** mode switch. The two differed by six tokens, which is not a choice
+  worth asking anyone to make. Simple's typography became the baseline and colour themes
+  replaced the control.
+
+---
+
 ## [1.0.0] — 2026-09-25
 
 First release. A personal blog with three access tiers running as a single Cloudflare Worker,
@@ -132,5 +163,6 @@ for the cost of the domain alone.
     PATCH  fixes and internal work only
 -->
 
-[Unreleased]: https://github.com/NitzKash/nkash-blog/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/NitzKash/nkash-blog/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/NitzKash/nkash-blog/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/NitzKash/nkash-blog/releases/tag/v1.0.0
