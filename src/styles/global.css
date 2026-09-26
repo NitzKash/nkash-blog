@@ -22,6 +22,14 @@
 
   --measure: 68ch;
   --gutter: clamp(1.25rem, 5vw, 2.5rem);
+
+  /* Typographic baseline. Themes override colour only, never these. */
+  --body-size: 1.125rem;
+  --body-leading: 1.75;
+  --radius: 8px;
+  --entry-gap: 1.5rem;
+  --motion: 180ms cubic-bezier(0.4, 0, 0.2, 1);
+  --rule: 1px solid var(--border);
 }
 
 @media (prefers-color-scheme: light) {
@@ -55,8 +63,8 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--serif);
-  font-size: 1.0625rem;
-  line-height: 1.7;
+  font-size: var(--body-size);
+  line-height: var(--body-leading);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -211,8 +219,8 @@ body {
 }
 
 .entry {
-  padding-block: 1.125rem;
-  border-block-end: 1px solid var(--border);
+  padding-block: var(--entry-gap);
+  border-block-end: var(--rule);
   display: grid;
   grid-template-columns: 5.5rem 1fr;
   gap: 0 1.5rem;
@@ -541,6 +549,12 @@ body {
   flex-wrap: wrap;
 }
 
+.colophon-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 1rem;
+}
+
 .colophon a {
   color: var(--text-dim);
   text-decoration: none;
@@ -577,4 +591,117 @@ body {
   font-family: var(--mono);
   font-size: 0.8125rem;
   padding-block: 1rem;
+}
+
+/* ---------- motion ---------- */
+
+a,
+.button,
+.chip,
+.tier,
+.entry-title a,
+.votes button {
+  transition:
+    color var(--motion),
+    border-color var(--motion),
+    background-color var(--motion),
+    opacity var(--motion);
+}
+
+.entry,
+.comment,
+.notice {
+  transition: border-color var(--motion);
+}
+
+/* Non-negotiable. Motion triggers genuine nausea and vertigo for people with
+   vestibular disorders; they turned this on deliberately and it outranks every
+   mode setting. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ---------- themes ----------
+   A theme is a complete palette. `auto` is the absence of this attribute, so a
+   reader who never touches the switcher follows their system. Nothing below
+   this point is referenced by a component — every rule in the file already
+   reads these tokens. */
+
+[data-theme='midnight'] {
+  --bg: #0d0b14;
+  --bg-raised: #15121f;
+  --border: #251f33;
+  --text: #e6e3ee;
+  --text-dim: #a29cb5;
+  --text-faint: #6e6880;
+  --accent: #a78bfa;
+  --accent-dim: #2e2544;
+  --warn: #e0af68;
+  --lock: #7aa2f7;
+}
+
+[data-theme='forest'] {
+  --bg: #0b100d;
+  --bg-raised: #131a15;
+  --border: #1f2a23;
+  --text: #e2e8e3;
+  --text-dim: #9aaaa0;
+  --text-faint: #64756b;
+  --accent: #7fc99a;
+  --accent-dim: #1d3328;
+  --warn: #d8b26a;
+  --lock: #a89ad4;
+}
+
+[data-theme='rose'] {
+  --bg: #fdf2f5;
+  --bg-raised: #f8e6ec;
+  --border: #eecdd8;
+  --text: #33202a;
+  --text-dim: #6b4a58;
+  --text-faint: #9c7c8a;
+  --accent: #b02f63;
+  --accent-dim: #f5d3e0;
+  --warn: #9a5a00;
+  --lock: #7a3d96;
+}
+
+[data-theme='sand'] {
+  --bg: #faf6ef;
+  --bg-raised: #f1e9dc;
+  --border: #ded2be;
+  --text: #2b2720;
+  --text-dim: #585044;
+  --text-faint: #8a8171;
+  --accent: #96551f;
+  --accent-dim: #ecdcc6;
+  --warn: #7d5e00;
+  --lock: #664b8a;
+}
+
+[data-theme='mono'] {
+  --bg: #ffffff;
+  --bg-raised: #f4f4f4;
+  --border: #d4d4d4;
+  --text: #111111;
+  --text-dim: #444444;
+  --text-faint: #6e6e6e;
+  --accent: #000000;
+  --accent-dim: #e0e0e0;
+  --warn: #5a4a00;
+  --lock: #333333;
+}
+
+/* An explicit theme wins over the system preference — the reader chose. */
+@media (prefers-color-scheme: light) {
+  [data-theme] {
+    color-scheme: only light;
+  }
 }

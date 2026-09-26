@@ -1,0 +1,103 @@
+---
+import { THEMES, DEFAULT_THEME, THEME_STORAGE_KEY } from '../lib/themes';
+---
+
+{/*
+  Swatches rather than text labels: six words would crowd the footer, and a dot
+  showing the actual background and accent tells you more about a palette than
+  its name does. Each is a real <button> with an accessible name, so the
+  control is usable without seeing the colours at all.
+*/}
+<div class="theme-switch" role="group" aria-label="Colour theme">
+  {
+    THEMES.map((theme) => (
+      <button
+        type="button"
+        data-theme-set={theme.id}
+        aria-pressed="false"
+        aria-label={`${theme.label} — ${theme.hint}`}
+        title={`${theme.label} — ${theme.hint}`}
+      >
+        <span class="dot" style={`--swatch:${theme.swatch};--ink:${theme.ink}`} aria-hidden="true" />
+      </button>
+    ))
+  }
+</div>
+
+<script is:inline define:vars={{ KEY: THEME_STORAGE_KEY, DEFAULT: DEFAULT_THEME }}>
+  (() => {
+    const apply = (theme) => {
+      // `auto` is the absence of the attribute, so the system preference in the
+      // stylesheet applies rather than being overridden by a copy of itself.
+      if (theme === 'auto') delete document.documentElement.dataset.theme;
+      else document.documentElement.dataset.theme = theme;
+
+      for (const button of document.querySelectorAll('[data-theme-set]')) {
+        button.setAttribute('aria-pressed', String(button.dataset.themeSet === theme));
+      }
+    };
+
+    let current = DEFAULT;
+    try {
+      const stored = localStorage.getItem(KEY);
+      if (stored) current = stored;
+    } catch {
+      // Storage unavailable; the default stands.
+    }
+    apply(document.documentElement.dataset.theme || current);
+
+    for (const button of document.querySelectorAll('[data-theme-set]')) {
+      button.addEventListener('click', () => {
+        const theme = button.dataset.themeSet;
+        try {
+          localStorage.setItem(KEY, theme);
+        } catch {
+          // Private browsing. The choice applies now but will not persist,
+          // which beats throwing and leaving the page half-styled.
+        }
+        apply(theme);
+      });
+    }
+  })();
+</script>
+
+<style>
+  .theme-switch {
+    display: inline-flex;
+    gap: 0.3125rem;
+    align-items: center;
+  }
+
+  .theme-switch button {
+    display: grid;
+    place-items: center;
+    width: 1.125rem;
+    height: 1.125rem;
+    padding: 0;
+    background: none;
+    border: 0;
+    border-radius: 50%;
+    cursor: pointer;
+    /* The ring is drawn outside the dot so selecting one does not shift the row. */
+    box-shadow: 0 0 0 1px var(--border);
+    transition: box-shadow var(--motion, 180ms);
+  }
+
+  .theme-switch button:hover {
+    box-shadow: 0 0 0 1px var(--text-faint);
+  }
+
+  .theme-switch button[aria-pressed='true'] {
+    box-shadow: 0 0 0 2px var(--accent);
+  }
+
+  .dot {
+    width: 0.75rem;
+    height: 0.75rem;
+    border-radius: 50%;
+    background: var(--swatch);
+    /* A wedge of the accent, so a palette is identifiable by more than its
+       background — Rose and Sand are both pale and would otherwise look alike. */
+    background-image: linear-gradient(135deg, transparent 50%, var(--ink) 50%);
+  }
+</style>

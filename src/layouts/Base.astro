@@ -1,5 +1,6 @@
 ---
 import '../styles/global.css';
+import ThemeSwitch from '../components/ThemeSwitch.astro';
 
 interface Props {
   title: string;
@@ -52,6 +53,24 @@ const isCurrent = (href: string) => (href === '/' ? path === '/' : path.startsWi
     <meta property="og:type" content="website" />
     <meta property="og:url" content={canonical.href} />
     <meta name="twitter:card" content="summary" />
+
+    {/*
+      Runs before first paint so the chosen mode is applied with nothing to
+      flash. It is inline and tiny for exactly that reason — an external file
+      would be a network round trip during which the page renders wrong.
+    */}
+    <script is:inline>
+      (() => {
+        try {
+          const stored = localStorage.getItem('nkash-theme');
+          // `auto` deliberately sets nothing, so the prefers-color-scheme rules
+          // in the stylesheet apply instead of being shadowed.
+          if (stored && stored !== 'auto') document.documentElement.dataset.theme = stored;
+        } catch {
+          // Storage unavailable; `auto` is the right fallback anyway.
+        }
+      })();
+    </script>
   </head>
 
   <body>
@@ -104,7 +123,10 @@ const isCurrent = (href: string) => (href === '/' ? path === '/' : path.startsWi
           sign in should not have to reach the bottom of the page to find it. */}
       <footer class="colophon">
         <span>nkash · India</span>
-        <span><a href="/rss.xml">rss</a></span>
+        <span class="colophon-right">
+          <ThemeSwitch />
+          <a href="/rss.xml">rss</a>
+        </span>
       </footer>
     </div>
   </body>
