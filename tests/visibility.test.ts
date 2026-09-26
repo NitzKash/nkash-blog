@@ -6,7 +6,7 @@ vi.mock('../src/access.config', () => ({
   circle: () => ['trusted-friend', 'Colleague@Example.COM'],
 }));
 
-const { canView, audienceFromLists, visibleTo } = await import('../src/lib/visibility');
+const { canView, canComment, audienceFromLists, visibleTo } = await import('../src/lib/visibility');
 type Viewer = Parameters<typeof audienceFromLists>[0];
 
 const owner: Viewer = { sub: 'github:1', login: 'the-owner' };
@@ -122,5 +122,46 @@ describe('visibleTo', () => {
 
   it('gives the owner everything', () => {
     expect(visibleTo(posts as never, 'owner', owner)).toHaveLength(4);
+  });
+});
+
+describe('canComment', () => {
+  // The rule is "comment on what you can read", so a pending member — who
+  // resolves to the anonymous audience — can still join a public thread.
+  it('lets a signed-in stranger comment on a public post', () => {
+    expect(canComment(post('public'), 'anonymous', stranger, 'pending')).toBe(true);
+  });
+
+  it('still refuses them on a circle post', () => {
+    expect(canComment(post('circle'), 'anonymous', stranger, 'pending')).toBe(false);
+  });
+
+  it('still refuses them on a private post', () => {
+    expect(canComment(post('private'), 'anonymous', stranger, 'pending')).toBe(false);
+  });
+
+  it('requires an identity — a comment has to attach to someone', () => {
+    expect(canComment(post('public'), 'anonymous', null)).toBe(false);
+  });
+
+  // A block that does not stop commenting is not a block. Blocking resolves
+  // someone to the anonymous audience, which would otherwise let them straight
+  // back into public threads.
+  it('refuses a blocked member everywhere, including public posts', () => {
+    expect(canComment(post('public'), 'anonymous', stranger, 'blocked')).toBe(false);
+    expect(canComment(post('circle'), 'circle', circleMember, 'blocked')).toBe(false);
+  });
+
+  it('lets approved members and owners comment on what they can read', () => {
+    expect(canComment(post('circle'), 'circle', circleMember, 'approved')).toBe(true);
+    expect(canComment(post('private'), 'owner', owner)).toBe(true);
+  });
+
+  // Drafts are owner-only, and commenting must not be a way to learn one exists.
+  it('refuses everyone but an owner on a draft', () => {
+    const draft = post('public', { draft: true });
+    expect(canComment(draft, 'anonymous', stranger, 'pending')).toBe(false);
+    expect(canComment(draft, 'circle', circleMember, 'approved')).toBe(false);
+    expect(canComment(draft, 'owner', owner)).toBe(true);
   });
 });

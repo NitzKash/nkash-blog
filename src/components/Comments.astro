@@ -14,10 +14,10 @@ interface Props {
 
 const { postSlug, audience, memberStatus, signedIn, viewerId } = Astro.props;
 
-// Only approved members and owners may write. Everyone who can see the post
-// can read the thread — visibility is inherited from the post, so reaching
-// this component at all already means canView() said yes.
-const canWrite = audience === 'circle' || audience === 'owner';
+// Anyone signed in and not blocked may write. Reaching this component at all
+// already means canView() passed for the post, so gating on that again here
+// would be checking the same thing twice — see canComment() for the rule.
+const canWrite = signedIn && memberStatus !== 'blocked';
 const isOwner = audience === 'owner';
 
 let thread: Awaited<ReturnType<typeof commentStore.list>> = [];
@@ -133,14 +133,11 @@ const signInHref = `/login?next=${encodeURIComponent(Astro.url.pathname)}`;
         </div>
       </form>
     ) : signedIn ? (
-      <p class="empty">
-        {memberStatus === 'blocked'
-          ? 'Commenting is closed for your account.'
-          : "You'll be able to comment once nkash approves you."}
-      </p>
+      <p class="empty">Commenting is closed for your account.</p>
     ) : (
       <p class="empty">
-        <a href={signInHref}>Sign in</a> to comment — approved readers only.
+        <a href={signInHref}>Sign in</a> to comment. Any account works — you don't need to be
+        approved.
       </p>
     )
   }
