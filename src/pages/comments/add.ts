@@ -1,6 +1,6 @@
 import type { APIRoute } from 'astro';
 import { posts as postStore, comments as commentStore } from '../../lib/data';
-import { canView } from '../../lib/visibility';
+import { canComment } from '../../lib/visibility';
 import {
   renderComment,
   validateComment,
@@ -27,13 +27,11 @@ const back = (slug: string, params: Record<string, string> = {}): Response => {
 };
 
 export const POST: APIRoute = async ({ request, locals, url }) => {
-  const { audience, viewer } = locals;
+  const { audience, viewer, memberStatus } = locals;
 
-  // Approved members and owners only. Anyone else gets the same 404 the admin
-  // routes give, rather than a hint that the endpoint exists.
-  if (!viewer || (audience !== 'circle' && audience !== 'owner')) {
-    return new Response(null, { status: 404 });
-  }
+  // Anyone signed in and not blocked, but the post check below is what
+  // actually decides — see canComment().
+  if (!viewer || memberStatus === 'blocked') return new Response(null, { status: 404 });
 
   const origin = request.headers.get('origin');
   if (origin && origin !== url.origin) return new Response(null, { status: 403 });
@@ -44,11 +42,11 @@ export const POST: APIRoute = async ({ request, locals, url }) => {
 
   if (!slug) return new Response(null, { status: 400 });
 
-  // Re-check the post rather than trusting the form. Being approved is not the
-  // same as being allowed to read this particular post — a private one is
-  // owner-only — and a comment on something you cannot see should not exist.
+  // Re-check the post rather than trusting the form. Signing in is not the
+  // same as being allowed to read this particular post, and a comment on
+  // something you cannot see should not exist.
   const post = await postStore.get(slug);
-  if (!post || !canView(post.data, audience, viewer)) {
+  if (!post || !canComment(post.data, audience, viewer, memberStatus)) {
     return new Response(null, { status: 404 });
   }
 

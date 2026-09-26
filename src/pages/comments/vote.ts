@@ -1,6 +1,6 @@
 import type { APIRoute } from 'astro';
 import { posts as postStore, comments as commentStore } from '../../lib/data';
-import { canView } from '../../lib/visibility';
+import { canComment } from '../../lib/visibility';
 
 export const prerender = false;
 
@@ -12,11 +12,11 @@ export const prerender = false;
  * to make one-vote-each enforceable and retraction possible, not to be shown.
  */
 export const POST: APIRoute = async ({ request, locals, url }) => {
-  const { audience, viewer } = locals;
+  const { audience, viewer, memberStatus } = locals;
 
-  if (!viewer || (audience !== 'circle' && audience !== 'owner')) {
-    return new Response(null, { status: 404 });
-  }
+  // Same rule as commenting: signed in, not blocked, and able to read the post
+  // the comment hangs off.
+  if (!viewer || memberStatus === 'blocked') return new Response(null, { status: 404 });
 
   const origin = request.headers.get('origin');
   if (origin && origin !== url.origin) return new Response(null, { status: 403 });
@@ -36,7 +36,7 @@ export const POST: APIRoute = async ({ request, locals, url }) => {
   if (!slug) return new Response(null, { status: 404 });
 
   const post = await postStore.get(slug);
-  if (!post || !canView(post.data, audience, viewer)) {
+  if (!post || !canComment(post.data, audience, viewer, memberStatus)) {
     return new Response(null, { status: 404 });
   }
 

@@ -324,7 +324,11 @@ try {
     }).then((r) => r.status)) === 404,
   );
 
-  check('a signed-in non-member cannot comment', (await comment('nope', strangerCookie)) === 404);
+  // Not approved, but signed in — allowed on a public post by design.
+  check(
+    'a signed-in non-member CAN comment on a public post',
+    (await comment(`stranger says hi ${RUN}`, strangerCookie)) === 303,
+  );
 
   // The property the whole escape-first renderer exists for.
   await comment(`<img src=x onerror=alert(${RUN})> <b>bold</b>`, friendCookie);
@@ -377,7 +381,7 @@ try {
   const t = tally();
   check('switching direction moves the vote, not adds one', t.up === 0 && t.down === 1);
 
-  check('a signed-in non-member cannot vote', (await vote('up', strangerCookie)) === 404);
+  check('a signed-in non-member can vote on a public post', (await vote('up', strangerCookie)) === 303);
   check('an anonymous visitor cannot vote', (await vote('up', '....')) === 404);
 
   // Moderation

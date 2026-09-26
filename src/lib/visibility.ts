@@ -78,6 +78,35 @@ export function canView(item: Gated, audience: Audience, viewer: Viewer | null):
   return false;
 }
 
+/**
+ * May this viewer comment on this item?
+ *
+ * The rule is deliberately derived from `canView` rather than written
+ * separately: you may comment on exactly what you may read. That means a
+ * pending member can join the conversation on a public post while still being
+ * unable to see anything gated, and it means there is no second authorisation
+ * surface that can drift out of step with the first.
+ *
+ * Two additional conditions, both of which `canView` has no reason to know
+ * about:
+ *
+ *   - Signed in. A comment needs an identity to attach to, so anonymous
+ *     readers are out even on a fully public post.
+ *   - Not blocked. Blocking resolves someone to the anonymous audience, which
+ *     would otherwise still let them comment on public posts — and a block
+ *     that does not stop commenting is not a block.
+ */
+export function canComment(
+  item: Gated,
+  audience: Audience,
+  viewer: Viewer | null,
+  memberStatus?: 'pending' | 'approved' | 'blocked',
+): boolean {
+  if (!viewer) return false;
+  if (memberStatus === 'blocked') return false;
+  return canView(item, audience, viewer);
+}
+
 /** Filter a collection down to what this viewer is allowed to see. */
 export function visibleTo<T extends { data: Gated }>(
   items: T[],
