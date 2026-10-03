@@ -52,10 +52,26 @@ interface Gated {
   authorId?: string | null;
 }
 
-/** Did this viewer write it? Their own post is always theirs to read. */
+/** Did this viewer write it? */
 export function isAuthor(item: Gated, viewer: Viewer | null): boolean {
   if (!viewer) return false;
   return item.authorId ? item.authorId === viewer.sub : false;
+}
+
+/**
+ * Is this viewer still entitled to the access authorship grants?
+ *
+ * Writing something does not entitle you to it forever. When someone is
+ * removed from the circle or blocked they resolve to the anonymous audience,
+ * and their private posts go with them: archived, readable by nobody,
+ * including the person who wrote them.
+ *
+ * Their public and circle posts stay up — those were published to an audience
+ * and taking them down would be editing the site's history rather than
+ * revoking an individual's access.
+ */
+function hasStanding(audience: Audience): boolean {
+  return audience === 'circle' || audience === 'owner';
 }
 
 /** An unattributed post belongs to the site owner. */
@@ -75,8 +91,9 @@ function isOwnerAuthored(item: Gated): boolean {
  * Fails closed: an unrecognised visibility value returns false.
  */
 export function canView(item: Gated, audience: Audience, viewer: Viewer | null): boolean {
-  // Your own post is always yours to read, at any tier, draft or not.
-  if (isAuthor(item, viewer)) return true;
+  // Your own post is yours to read at any tier — for as long as you are still
+  // a member. Lose standing and your private work is archived, not inherited.
+  if (isAuthor(item, viewer) && hasStanding(audience)) return true;
 
   // An unattributed post is the site owner's, and they keep the access they
   // had before authorship existed.
@@ -112,7 +129,7 @@ export function canView(item: Gated, audience: Audience, viewer: Viewer | null):
  * your own site means being able to take something down.
  */
 export function canEdit(item: Gated, audience: Audience, viewer: Viewer | null): boolean {
-  if (isAuthor(item, viewer)) return true;
+  if (isAuthor(item, viewer) && hasStanding(audience)) return true;
   return isOwnerAuthored(item) && audience === 'owner';
 }
 

@@ -29,32 +29,49 @@ const FROM = `FROM posts p LEFT JOIN members m ON m.id = p.author_id`;
  * "only the owner". This is still an optimisation and a second lock — canView
  * remains the decision, and every caller runs results through visibleTo.
  */
-function audienceFilter(audience: Audience): string {
+/**
+ * Returns the WHERE clause and whether it references the viewer parameter.
+ *
+ * The anonymous branch does not, so binding one unconditionally is a
+ * "Wrong number of parameter bindings" error at runtime. The flag travels with
+ * the clause rather than being inferred at the call site, so the two cannot
+ * drift apart.
+ */
+function audienceFilter(audience: Audience): { where: string; needsViewer: boolean } {
   const own = 'p.author_id = ?1';
-  const published = "p.draft = 0";
+  const published = 'p.draft = 0';
 
   switch (audience) {
     case 'owner':
       // Everything public and circle, their own posts, and the unattributed
       // ones that predate authorship. Not other people's private posts.
-      return `(${own} OR p.author_id IS NULL
-               OR (p.visibility IN ('public', 'circle') AND ${published}))`;
+      return {
+        where: `(${own} OR p.author_id IS NULL
+                 OR (p.visibility IN ('public', 'circle') AND ${published}))`,
+        needsViewer: true,
+      };
     case 'circle':
-      return `(${own} OR (p.visibility IN ('public', 'circle') AND ${published}))`;
+      return {
+        where: `(${own} OR (p.visibility IN ('public', 'circle') AND ${published}))`,
+        needsViewer: true,
+      };
     default:
-      return `(${own} OR (p.visibility = 'public' AND ${published}))`;
+      // No `own` clause on purpose. Anonymous covers both a stranger and a
+      // removed or blocked member, and a removed member's private posts are
+      // archived — including from the person who wrote them. Matching on
+      // author here would hand them straight back.
+      return { where: `(p.visibility = 'public' AND ${published})`, needsViewer: false };
   }
 }
 
 export async function list(audience: Audience, viewerId = ''): Promise<Post[]> {
-  const { results } = await db()
-    .prepare(
-      `SELECT ${LIST_COLUMNS} ${FROM}
-       WHERE ${audienceFilter(audience)}
-       ORDER BY p.pub_date DESC`,
-    )
-    .bind(viewerId)
-    .all<PostRow>();
+  const { where, needsViewer } = audienceFilter(audience);
+
+  const statement = db().prepare(
+    `SELECT ${LIST_COLUMNS} ${FROM} WHERE ${where} ORDER BY p.pub_date DESC`,
+  );
+
+  const { results } = await (needsViewer ? statement.bind(viewerId) : statement).all<PostRow>();
 
   return (results ?? []).map(toPost);
 }

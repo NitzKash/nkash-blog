@@ -118,6 +118,21 @@ halves are tested.
 `blocked` is kept as a row rather than deleted, so a repeat sign-in does not
 quietly reappear in the approval queue.
 
+## Standing
+
+Writing something does not entitle you to it forever. A removed or blocked
+member resolves to the anonymous audience, and `canView` requires standing —
+circle or owner — before authorship grants anything. So their private posts and
+drafts go dark, **including to the person who wrote them**, and they can no
+longer reach the editor.
+
+Their public and circle posts stay up, byline intact. Those were published to
+an audience, and pulling them would be rewriting the site's history rather than
+revoking one person's access.
+
+It is reversible: re-approving someone restores everything, because nothing is
+deleted — only unreachable.
+
 ## Storage
 
 **Rendered HTML is stored, not produced per request.** Markdown parsing yields

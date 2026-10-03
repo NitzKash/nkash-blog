@@ -191,14 +191,16 @@ describe('isAuthor', () => {
 });
 
 describe('canView with authors', () => {
-  it('lets an author read their own post at any tier', () => {
+  // 'circle' is an author in good standing. Passing 'anonymous' here would be
+  // a removed member, which is covered in its own block further down.
+  it('lets an author in good standing read their own post at any tier', () => {
     for (const tier of ['public', 'circle', 'private']) {
-      expect(canView(authored(tier, 'github:100'), 'anonymous', alice), tier).toBe(true);
+      expect(canView(authored(tier, 'github:100'), 'circle', alice), tier).toBe(true);
     }
   });
 
-  it('lets an author read their own draft', () => {
-    expect(canView(authored('public', 'github:100', { draft: true }), 'anonymous', alice)).toBe(true);
+  it('lets an author in good standing read their own draft', () => {
+    expect(canView(authored('public', 'github:100', { draft: true }), 'circle', alice)).toBe(true);
   });
 
   // The property this whole change turns on.
@@ -293,5 +295,52 @@ describe('visibleTo with authors', () => {
 
   it('gives an anonymous reader the public one', () => {
     expect(visibleTo(mixed as never, 'anonymous', null)).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Standing. Writing something does not entitle you to it forever — a removed
+// or blocked member resolves to the anonymous audience, and their private work
+// is archived rather than inherited.
+// ---------------------------------------------------------------------------
+
+describe('a removed or blocked author', () => {
+  const removed = alice; // resolves to the anonymous audience once removed
+
+  it('loses access to their own private posts', () => {
+    expect(canView(authored('private', 'github:100'), 'circle', alice)).toBe(true);
+    expect(canView(authored('private', 'github:100'), 'anonymous', removed)).toBe(false);
+  });
+
+  it('loses access to their own drafts', () => {
+    const draft = authored('public', 'github:100', { draft: true });
+    expect(canView(draft, 'circle', alice)).toBe(true);
+    expect(canView(draft, 'anonymous', removed)).toBe(false);
+  });
+
+  it('loses access to their own circle posts, like any other outsider', () => {
+    expect(canView(authored('circle', 'github:100'), 'anonymous', removed)).toBe(false);
+  });
+
+  // Published work stays published. Taking it down would be editing the site's
+  // history rather than revoking one person's access.
+  it('keeps their public posts readable by everyone', () => {
+    expect(canView(authored('public', 'github:100'), 'anonymous', removed)).toBe(true);
+    expect(canView(authored('public', 'github:100'), 'anonymous', null)).toBe(true);
+  });
+
+  it('can no longer edit anything of their own', () => {
+    expect(canEdit(authored('public', 'github:100'), 'circle', alice)).toBe(true);
+    expect(canEdit(authored('public', 'github:100'), 'anonymous', removed)).toBe(false);
+  });
+
+  it('is still invisible to everyone else, as before', () => {
+    expect(canView(authored('private', 'github:100'), 'owner', owner)).toBe(false);
+    expect(canView(authored('private', 'github:100'), 'circle', bob)).toBe(false);
+  });
+
+  // The owner keeps their own access regardless — their audience is 'owner'.
+  it('does not affect the owner reading their own private posts', () => {
+    expect(canView(authored('private', null), 'owner', owner)).toBe(true);
   });
 });
