@@ -1,5 +1,6 @@
 import type { APIRoute } from 'astro';
 import { posts as postStore } from '../../lib/data';
+import { canEdit, canDelete } from '../../lib/visibility';
 import { renderMarkdown, readingMinutes, slugify, excerpt } from '../../lib/markdown';
 
 export const prerender = false;
@@ -19,10 +20,12 @@ const backToEditor = (slug: string | null, message: string): Response =>
   );
 
 export const POST: APIRoute = async ({ request, locals, url }) => {
-  const { audience } = locals;
+  const { audience, viewer } = locals;
+  if (!viewer) return new Response(null, { status: 404 });
 
-  // 404 rather than 403, matching the rest of /admin.
-  if (audience !== 'owner') return new Response(null, { status: 404 });
+  // 404 rather than 403, matching the rest of /admin. Contributors reach this;
+  // canEdit below decides whether they may touch this particular post.
+  if (audience !== 'owner' && audience !== 'circle') return new Response(null, { status: 404 });
 
   const origin = request.headers.get('origin');
   if (origin && origin !== url.origin) return new Response(null, { status: 403 });
@@ -32,10 +35,24 @@ export const POST: APIRoute = async ({ request, locals, url }) => {
 
   const originalSlug = str('originalSlug') || null;
 
+  // Editing or deleting an existing post requires rights to that post, not
+  // merely rights to the editor. Checked against the stored row, never against
+  // anything the form claims.
+  const existing = originalSlug ? await postStore.get(originalSlug) : null;
+  if (originalSlug && !existing) return new Response(null, { status: 404 });
+
   if (str('action') === 'delete') {
-    if (!originalSlug) return backToEditor(null, 'Nothing to delete.');
-    await postStore.remove(originalSlug);
+    if (!existing) return backToEditor(null, 'Nothing to delete.');
+    // Owners can take anything down; authors can remove their own.
+    if (!canDelete(existing.data, audience, viewer)) return new Response(null, { status: 404 });
+    await postStore.remove(existing.id);
     return seeOther('/admin/posts?done=Deleted');
+  }
+
+  // An owner may read a contributor's post but must not be able to rewrite it
+  // under their name, so this is narrower than canView.
+  if (existing && !canEdit(existing.data, audience, viewer)) {
+    return new Response(null, { status: 404 });
   }
 
   const title = str('title');
@@ -76,6 +93,8 @@ export const POST: APIRoute = async ({ request, locals, url }) => {
 
   await postStore.upsert({
     slug,
+    // Preserved on edit, set on create — an edit must never reassign a byline.
+    authorId: existing?.data.authorId ?? viewer.sub,
     title,
     description: str('description') || excerpt(body),
     visibility,

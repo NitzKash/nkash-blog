@@ -2,11 +2,13 @@
 import Base from '../../layouts/Base.astro';
 import { posts as postStore } from '../../lib/data';
 import { privateCacheHeaders } from '../../lib/cache';
+import { canEdit } from '../../lib/visibility';
 
-const { audience } = Astro.locals;
+const { audience, viewer } = Astro.locals;
 
+// Contributors write too; what they may edit is checked per post below.
 // 404, not 403 — a 403 confirms the route exists.
-if (audience !== 'owner') return new Response(null, { status: 404 });
+if (audience !== 'owner' && audience !== 'circle') return new Response(null, { status: 404 });
 
 for (const [key, value] of Object.entries(privateCacheHeaders())) {
   Astro.response.headers.set(key, value);
@@ -18,6 +20,12 @@ const existing = slug ? await postStore.get(slug) : null;
 // Editing a slug that does not exist is a mistake worth surfacing, not a
 // silent "new post" form with the wrong title.
 if (slug && !existing) return new Response(null, { status: 404 });
+
+// Opening someone else's post in the editor is the same 404 as a post that
+// does not exist. An owner can read a contributor's work but not rewrite it.
+if (existing && !canEdit(existing.data, audience, viewer)) {
+  return new Response(null, { status: 404 });
+}
 
 const isNew = !existing;
 const error = Astro.url.searchParams.get('error');
@@ -36,7 +44,7 @@ const today = isoDate(new Date());
 
 const TIERS = [
   { value: 'private', label: 'Private', hint: 'Only you. Returns 404 to everyone else.' },
-  { value: 'circle', label: 'Friends', hint: 'Approved members. Others get a sign-in prompt.' },
+  { value: 'circle', label: 'Friends', hint: 'Members approved by the admin. Others get a sign-in prompt.' },
   { value: 'public', label: 'Public', hint: 'Anyone. Indexed, cached at the edge, in the feed.' },
 ];
 ---
@@ -134,7 +142,7 @@ const TIERS = [
 
     <label class="checkbox">
       <input type="checkbox" name="draft" value="1" checked={existing?.data.draft ?? false} />
-      <span>Draft — owner-only regardless of the tier above</span>
+      <span>Draft — only you, regardless of the tier above</span>
     </label>
 
     <div class="field">

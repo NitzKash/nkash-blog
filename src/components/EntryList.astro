@@ -1,9 +1,12 @@
 ---
 import Tier from './Tier.astro';
-import type { CollectionEntry } from 'astro:content';
+import type { Post } from '../lib/data';
 
+// Typed against the store, not `CollectionEntry<'posts'>` — that collection
+// was removed when posts moved to D1, so the old annotation referred to
+// something that no longer exists and silently typed `entry` as unusable.
 interface Props {
-  entries: CollectionEntry<'posts'>[];
+  entries: Post[];
   empty?: string;
 }
 
@@ -33,7 +36,12 @@ const dateFormat = new Intl.DateTimeFormat('en-GB', {
               <Tier visibility={entry.data.visibility} draft={entry.data.draft} />
             </h3>
           </div>
-          <p class="entry-desc">{entry.data.description}</p>
+          <p class="entry-desc">
+            {entry.data.description}
+            {/* Only contributors get a byline. The site owner's posts are the
+                default here, and marking every row would be noise. */}
+            {entry.author && <span class="byline">by {entry.author}</span>}
+          </p>
         </li>
       ))}
     </ul>

@@ -14,27 +14,46 @@ import type { Audience } from '../visibility';
  */
 
 /** Listing queries omit `body` and `html`: two large columns nobody renders. */
-const LIST_COLUMNS = `slug, title, description, visibility, draft, pub_date, updated_date,
-  tags, allow, '' AS body, '' AS html, reading_minutes`;
+const LIST_COLUMNS = `p.slug, p.title, p.description, p.visibility, p.draft, p.pub_date,
+  p.updated_date, p.tags, p.allow, '' AS body, '' AS html, p.reading_minutes, p.author_id,
+  m.username AS author_username, m.login AS author_login`;
 
+/** Resolves the byline. Joined live so a changed handle renames past posts. */
+const FROM = `FROM posts p LEFT JOIN members m ON m.id = p.author_id`;
+
+/**
+ * Narrows in SQL to what this viewer could possibly see.
+ *
+ * `?1` is the viewer's subject. Matching it lets an author reach their own
+ * posts at any tier, which is what makes `private` mean "only me" rather than
+ * "only the owner". This is still an optimisation and a second lock — canView
+ * remains the decision, and every caller runs results through visibleTo.
+ */
 function audienceFilter(audience: Audience): string {
+  const own = 'p.author_id = ?1';
+  const published = "p.draft = 0";
+
   switch (audience) {
     case 'owner':
-      return '1 = 1';
+      // Everything public and circle, their own posts, and the unattributed
+      // ones that predate authorship. Not other people's private posts.
+      return `(${own} OR p.author_id IS NULL
+               OR (p.visibility IN ('public', 'circle') AND ${published}))`;
     case 'circle':
-      return "visibility IN ('public', 'circle') AND draft = 0";
+      return `(${own} OR (p.visibility IN ('public', 'circle') AND ${published}))`;
     default:
-      return "visibility = 'public' AND draft = 0";
+      return `(${own} OR (p.visibility = 'public' AND ${published}))`;
   }
 }
 
-export async function list(audience: Audience): Promise<Post[]> {
+export async function list(audience: Audience, viewerId = ''): Promise<Post[]> {
   const { results } = await db()
     .prepare(
-      `SELECT ${LIST_COLUMNS} FROM posts
+      `SELECT ${LIST_COLUMNS} ${FROM}
        WHERE ${audienceFilter(audience)}
-       ORDER BY pub_date DESC`,
+       ORDER BY p.pub_date DESC`,
     )
+    .bind(viewerId)
     .all<PostRow>();
 
   return (results ?? []).map(toPost);
@@ -42,11 +61,24 @@ export async function list(audience: Audience): Promise<Post[]> {
 
 export async function get(slug: string): Promise<Post | null> {
   const row = await db()
-    .prepare('SELECT * FROM posts WHERE slug = ?1')
+    .prepare(
+      `SELECT p.*, m.username AS author_username, m.login AS author_login ${FROM}
+       WHERE p.slug = ?1`,
+    )
     .bind(slug)
     .first<PostRow>();
 
   return row ? toPost(row) : null;
+}
+
+/** Everything one author wrote, for their own post list. */
+export async function listByAuthor(authorId: string): Promise<Post[]> {
+  const { results } = await db()
+    .prepare(`SELECT ${LIST_COLUMNS} ${FROM} WHERE p.author_id = ?1 ORDER BY p.pub_date DESC`)
+    .bind(authorId)
+    .all<PostRow>();
+
+  return (results ?? []).map(toPost);
 }
 
 /**
@@ -59,9 +91,9 @@ export async function get(slug: string): Promise<Post | null> {
 export async function listPublic(): Promise<Post[]> {
   const { results } = await db()
     .prepare(
-      `SELECT ${LIST_COLUMNS} FROM posts
-       WHERE visibility = 'public' AND draft = 0
-       ORDER BY pub_date DESC`,
+      `SELECT ${LIST_COLUMNS} ${FROM}
+       WHERE p.visibility = 'public' AND p.draft = 0
+       ORDER BY p.pub_date DESC`,
     )
     .all<PostRow>();
 
@@ -70,6 +102,7 @@ export async function listPublic(): Promise<Post[]> {
 
 export interface PostInput {
   slug: string;
+  authorId: string;
   title: string;
   description?: string;
   visibility: string;
@@ -91,8 +124,8 @@ export async function upsert(input: PostInput): Promise<void> {
     .prepare(
       `INSERT INTO posts (
          slug, title, description, visibility, draft, pub_date, updated_date,
-         tags, allow, body, html, reading_minutes, created_at, updated_at
-       ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?13)
+         tags, allow, body, html, reading_minutes, created_at, updated_at, author_id
+       ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?13, ?14)
        ON CONFLICT (slug) DO UPDATE SET
          title = excluded.title,
          description = excluded.description,
@@ -106,6 +139,8 @@ export async function upsert(input: PostInput): Promise<void> {
          html = excluded.html,
          reading_minutes = excluded.reading_minutes,
          updated_at = excluded.updated_at`,
+      // author_id is deliberately absent from the UPDATE: editing a post must
+      // never silently reassign who wrote it.
     )
     .bind(
       input.slug,
@@ -121,6 +156,7 @@ export async function upsert(input: PostInput): Promise<void> {
       input.html,
       input.readingMinutes,
       now,
+      input.authorId,
     )
     .run();
 }

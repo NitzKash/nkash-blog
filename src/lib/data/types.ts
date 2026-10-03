@@ -18,12 +18,16 @@ export interface Post {
     allow: string[];
     tags: string[];
     draft: boolean;
+    /** Provider subject of the author. Null means the site owner. */
+    authorId: string | null;
   };
   /** Rendered at publish time. Empty on listing queries, which do not select it. */
   html: string;
   /** Markdown source, for the editor and for bulk re-rendering. Empty on listings. */
   body: string;
   readingMinutes: number;
+  /** Byline for display. Absent for the site owner's unattributed posts. */
+  author?: string;
 }
 
 export interface Project {
@@ -55,6 +59,9 @@ export interface PostRow {
   body: string;
   html: string;
   reading_minutes: number;
+  author_id?: string | null;
+  author_username?: string | null;
+  author_login?: string | null;
 }
 
 export interface ProjectRow {
@@ -105,10 +112,14 @@ export function toPost(row: PostRow): Post {
       allow: toStringArray(row.allow),
       tags: toStringArray(row.tags),
       draft: row.draft === 1,
+      authorId: row.author_id ?? null,
     },
     html: row.html ?? '',
     body: row.body ?? '',
     readingMinutes: row.reading_minutes || 1,
+    // Handle first, provider login as fallback. Undefined for an unattributed
+    // post, which is the site owner's and needs no byline.
+    author: row.author_id ? (row.author_username ?? row.author_login ?? 'someone') : undefined,
   };
 }
 
