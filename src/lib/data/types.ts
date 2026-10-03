@@ -26,8 +26,8 @@ export interface Post {
   /** Markdown source, for the editor and for bulk re-rendering. Empty on listings. */
   body: string;
   readingMinutes: number;
-  /** Byline for display. Absent for the site owner's unattributed posts. */
-  author?: string;
+  /** Byline for display. Always present — every post says who wrote it. */
+  author: string;
 }
 
 export interface Project {
@@ -117,9 +117,10 @@ export function toPost(row: PostRow): Post {
     html: row.html ?? '',
     body: row.body ?? '',
     readingMinutes: row.reading_minutes || 1,
-    // Handle first, provider login as fallback. Undefined for an unattributed
-    // post, which is the site owner's and needs no byline.
-    author: row.author_id ? (row.author_username ?? row.author_login ?? 'someone') : undefined,
+    // Handle first, provider login next. A post with no author predates
+    // authorship and belongs to the site itself, so it is bylined as such
+    // rather than left blank.
+    author: row.author_username ?? row.author_login ?? (row.author_id ? 'someone' : 'nkash'),
   };
 }
 

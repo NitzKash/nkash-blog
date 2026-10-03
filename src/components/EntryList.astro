@@ -38,9 +38,7 @@ const dateFormat = new Intl.DateTimeFormat('en-GB', {
           </div>
           <p class="entry-desc">
             {entry.data.description}
-            {/* Only contributors get a byline. The site owner's posts are the
-                default here, and marking every row would be noise. */}
-            {entry.author && <span class="byline">by {entry.author}</span>}
+            <span class="byline">by {entry.author}</span>
           </p>
         </li>
       ))}

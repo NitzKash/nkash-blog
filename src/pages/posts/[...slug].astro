@@ -65,12 +65,8 @@ const dateFormat = new Intl.DateTimeFormat('en-GB', {
             </time>
             <span>·</span>
             <span>{post.readingMinutes} min</span>
-            {post.author && (
-              <>
-                <span>·</span>
-                <span>by {post.author}</span>
-              </>
-            )}
+            <span>·</span>
+            <span>by {post.author}</span>
             <Tier visibility={post.data.visibility} draft={post.data.draft} />
             {canEdit(post.data, audience, viewer) && (
               <a href={`/admin/editor?slug=${encodeURIComponent(post.id)}`}>edit</a>

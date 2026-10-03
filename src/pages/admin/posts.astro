@@ -69,9 +69,7 @@ const when = new Intl.DateTimeFormat('en-GB', {
             </div>
             <p class="entry-desc">
               <a href={`/posts/${post.id}`}>/posts/{post.id}</a>
-              {/* The owner sees everyone's posts here, so who wrote each one
-                  matters more on this page than on a public listing. */}
-              {post.author && <span class="byline">by {post.author}</span>}
+              <span class="byline">by {post.author}</span>
             </p>
           </li>
         ))}
