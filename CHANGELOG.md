@@ -18,6 +18,24 @@ Nothing yet.
 
 ---
 
+## [1.3.1] — 2026-10-04
+
+### Fixed
+
+- **A member removed from the circle kept access to their own private posts.** Authorship was
+  checked before anything else, so losing approval revoked nothing a person had written. It now
+  requires current standing: removed and blocked members lose their private posts, their drafts
+  and the editor — including their own work.
+
+  Their **public and circle posts stay up**, byline intact. Those were published to an audience,
+  and pulling them would be rewriting the site's history rather than revoking one person's
+  access. Nothing is deleted, so re-approving someone restores everything.
+
+  The same gap existed in the database query, which matched on author regardless of standing and
+  would have returned the rows even with the check corrected.
+
+---
+
 ## [1.3.0] — 2026-10-03
 
 ### Added
@@ -209,7 +227,8 @@ for the cost of the domain alone.
     PATCH  fixes and internal work only
 -->
 
-[Unreleased]: https://github.com/NitzKash/nkash-blog/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/NitzKash/nkash-blog/compare/v1.3.1...HEAD
+[1.3.1]: https://github.com/NitzKash/nkash-blog/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/NitzKash/nkash-blog/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/NitzKash/nkash-blog/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/NitzKash/nkash-blog/compare/v1.0.0...v1.1.0
