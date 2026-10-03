@@ -137,10 +137,35 @@ const TIERS = [
       <span>Draft — owner-only regardless of the tier above</span>
     </label>
 
-    <label class="field">
-      <span>Body <em>markdown · ⌘S to save · tab indents</em></span>
-      <textarea name="body" id="body" spellcheck="true" rows="24"></textarea>
-    </label>
+    <div class="field">
+      <div class="body-head">
+        <span>Body <em>markdown · ⌘S to save · tab indents</em></span>
+
+        {/* Real tabs rather than a toggle, so the pattern is familiar and the
+            roles are correct for a screen reader. */}
+        <div class="tabs" role="tablist" aria-label="Editor view">
+          <button type="button" role="tab" data-tab="write" aria-selected="true" aria-controls="panel-write">
+            Write
+          </button>
+          <button type="button" role="tab" data-tab="preview" aria-selected="false" aria-controls="panel-preview">
+            Preview
+          </button>
+        </div>
+      </div>
+
+      <div id="panel-write" role="tabpanel">
+        <label>
+          <span class="visually-hidden">Post body in markdown</span>
+          <textarea name="body" id="body" spellcheck="true" rows="24"></textarea>
+        </label>
+      </div>
+
+      {/* Rendered server-side by /admin/preview, through the same pipeline as
+          save — see the note there on why this is a round trip. */}
+      <div id="panel-preview" role="tabpanel" hidden>
+        <div class="prose" id="preview-output"></div>
+      </div>
+    </div>
 
     <div class="actions">
       <button class="button primary" type="submit">{isNew ? 'Create post' : 'Save changes'}</button>
@@ -187,6 +212,80 @@ const TIERS = [
       if (!window.confirm(button.getAttribute('data-confirm'))) event.preventDefault();
     });
   }
+
+  // ---- Write / Preview tabs -------------------------------------------------
+
+  const panels = {
+    write: document.getElementById('panel-write'),
+    preview: document.getElementById('panel-preview'),
+  };
+  const output = document.getElementById('preview-output');
+  const tabs = [...document.querySelectorAll('[data-tab]')];
+
+  // Only re-render when the text has actually changed since the last preview.
+  // Flicking between tabs to re-read something should not cost a round trip.
+  let lastRendered = null;
+
+  async function renderPreview() {
+    const source = textarea.value;
+    if (source === lastRendered) return;
+
+    output.setAttribute('aria-busy', 'true');
+    try {
+      const response = await fetch('/admin/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+        body: source,
+      });
+      if (!response.ok) throw new Error(String(response.status));
+      output.innerHTML = await response.text();
+      lastRendered = source;
+    } catch {
+      // Say so plainly rather than showing a stale or blank preview, which
+      // would read as "your markdown produced nothing".
+      output.innerHTML =
+        '<p style="color:var(--warn)">Could not render a preview. Your text is safe — switch back to Write.</p>';
+      lastRendered = null;
+    } finally {
+      output.removeAttribute('aria-busy');
+    }
+  }
+
+  function show(name) {
+    for (const tab of tabs) {
+      tab.setAttribute('aria-selected', String(tab.dataset.tab === name));
+    }
+    panels.write.hidden = name !== 'write';
+    panels.preview.hidden = name !== 'preview';
+
+    if (name === 'preview') renderPreview();
+    else textarea.focus();
+  }
+
+  for (const tab of tabs) {
+    tab.addEventListener('click', () => show(tab.dataset.tab));
+  }
+
+  // Left/right arrows move between tabs, which is what the tablist role
+  // promises a keyboard user.
+  for (const tab of tabs) {
+    tab.addEventListener('keydown', (event) => {
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+      event.preventDefault();
+      const next = tabs[(tabs.indexOf(tab) + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length];
+      next.focus();
+      show(next.dataset.tab);
+    });
+  }
+
+  // Saving from the Preview tab should still work — the textarea is hidden,
+  // not detached, so its value is still submitted.
+  document.addEventListener('keydown', (event) => {
+    if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === 'p') {
+      event.preventDefault();
+      show(panels.preview.hidden ? 'preview' : 'write');
+    }
+  });
 </script>
 
 <style>
@@ -308,6 +407,69 @@ const TIERS = [
     margin-inline-start: auto;
     color: var(--warn);
     border-color: color-mix(in srgb, var(--warn) 35%, transparent);
+  }
+
+  .body-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+
+  .tabs {
+    display: inline-flex;
+    gap: 0.125rem;
+  }
+
+  .tabs button {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    padding: 0.25rem 0.625rem;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 5px;
+    color: var(--text-faint);
+    cursor: pointer;
+  }
+
+  .tabs button:hover {
+    color: var(--text-dim);
+  }
+
+  .tabs button[aria-selected='true'] {
+    color: var(--text);
+    background: var(--bg-raised);
+    border-color: var(--border);
+  }
+
+  /* Matches the textarea's box so switching tabs does not resize the page —
+     a preview that makes the Save button jump is worse than no preview. */
+  #panel-preview .prose {
+    min-height: 24rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1rem 1.125rem;
+    background: var(--bg-raised);
+  }
+
+  #panel-preview .prose:empty::after {
+    content: 'Nothing to preview yet.';
+    color: var(--text-faint);
+    font-family: var(--mono);
+    font-size: 0.8125rem;
+  }
+
+  #panel-preview .prose[aria-busy='true'] {
+    opacity: 0.5;
+  }
+
+  .visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
   }
 
   .form-error {
