@@ -176,6 +176,40 @@ try {
   const sitemap = await get('/sitemap.xml');
   check('sitemap has no private slug',
     !sitemap.body.includes(slugs.alicePrivate) && !sitemap.body.includes(slugs.bobPrivate));
+
+  // -------------------------------------------------------------------------
+  console.log('\nRemoving someone archives their private work:');
+
+  // Demote alice to pending — the same resolution a removed or blocked member
+  // gets. Her public post stays up; her private work goes dark, including to
+  // her.
+  sql(`UPDATE members SET status = 'pending' WHERE id = '${ALICE}'`);
+
+  check('she can no longer read her own private post',
+    (await get(`/posts/${slugs.alicePrivate}`, alice)).status === 404);
+  check('it is gone from her listing',
+    !(await get('/posts', alice)).body.includes(`alice private ${RUN}`));
+  check('she can no longer open the editor at all',
+    (await get('/admin/editor', alice)).status === 404);
+  check('she can no longer edit her own post',
+    (await get(`/admin/editor?slug=${slugs.alicePublic}`, alice)).status === 404);
+  check('she cannot save over it either',
+    (await save({ originalSlug: slugs.alicePublic, slug: slugs.alicePublic, title: 'after removal',
+                  visibility: 'public', pubDate: '2026-01-01', body: 'nope' }, alice)) === 404);
+
+  // Published work stays published — taking it down would be rewriting the
+  // site's history rather than revoking one person's access.
+  check('her public post is still readable by everyone',
+    (await get(`/posts/${slugs.alicePublic}`)).status === 200);
+  check('and still carries her byline',
+    (await get(`/posts/${slugs.alicePublic}`)).body.includes(`by alice-${RUN}`));
+  check('and is still in the feed',
+    (await get('/rss.xml')).body.includes(`Alice edited ${RUN}`));
+
+  // Restoring her restores the access, so this is reversible.
+  sql(`UPDATE members SET status = 'approved' WHERE id = '${ALICE}'`);
+  check('re-approving her restores access to her private post',
+    (await get(`/posts/${slugs.alicePrivate}`, alice)).status === 200);
 } finally {
   for (const slug of Object.values(slugs)) sql(`DELETE FROM posts WHERE slug = '${slug}'`);
   sql(`DELETE FROM members WHERE id IN ('${ALICE}', '${BOB}')`);
