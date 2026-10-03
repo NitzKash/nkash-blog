@@ -201,6 +201,12 @@ body {
   color: var(--text-dim);
 }
 
+/* The intro runs to more than one paragraph now. Spacing goes between them
+   rather than after the last, so the gap to whatever follows is unchanged. */
+.intro p + p {
+  margin-block-start: 0.875rem;
+}
+
 .section-label {
   font-family: var(--mono);
   font-size: 0.6875rem;

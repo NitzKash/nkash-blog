@@ -33,7 +33,7 @@ export const GET: APIRoute = async ({ site, url }) => {
   <channel>
     <title>nkash</title>
     <link>${origin}</link>
-    <description>nkash — distributed systems, computer vision at scale.</description>
+    <description>nkash — software engineer. Computer vision, large-scale systems, and notes on building things that hold up.</description>
     <language>en</language>
     <atom:link href="${origin}/rss.xml" rel="self" type="application/rss+xml" />
 ${items}
