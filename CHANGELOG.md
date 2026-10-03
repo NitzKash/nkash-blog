@@ -18,6 +18,24 @@ Nothing yet.
 
 ---
 
+## [1.2.0] — 2026-10-03
+
+### Added
+
+- **A Write / Preview tab in the editor.** Preview renders on the server through the same
+  pipeline that publishing uses, so what you see is what gets stored — the end-to-end suite
+  asserts the two are byte-identical. A browser-side renderer would have been faster but could
+  disagree with the published result, and that disagreement would only surface after saving.
+- **A markdown toolbar** — bold, italic, link, inline code, heading and bullet list — acting on
+  the current selection, plus **⌘B**, **⌘I** and **⌘K**. Link is selection-aware: select a URL
+  and it becomes the target, select words and they become the label, with the cursor landing on
+  whichever half is still empty.
+- **A collapsed markdown reference** under the editor, covering the syntax the toolbar has no
+  button for: headings, lists, quotes, rules, fenced code blocks with language highlighting,
+  and tables.
+
+---
+
 ## [1.1.0] — 2026-09-26
 
 ### Added
@@ -163,6 +181,7 @@ for the cost of the domain alone.
     PATCH  fixes and internal work only
 -->
 
-[Unreleased]: https://github.com/NitzKash/nkash-blog/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/NitzKash/nkash-blog/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/NitzKash/nkash-blog/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/NitzKash/nkash-blog/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/NitzKash/nkash-blog/releases/tag/v1.0.0

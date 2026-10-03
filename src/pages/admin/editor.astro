@@ -137,10 +137,72 @@ const TIERS = [
       <span>Draft — owner-only regardless of the tier above</span>
     </label>
 
-    <label class="field">
-      <span>Body <em>markdown · ⌘S to save · tab indents</em></span>
-      <textarea name="body" id="body" spellcheck="true" rows="24"></textarea>
-    </label>
+    <div class="field">
+      <div class="body-head">
+        <span>Body <em>markdown · ⌘S to save · tab indents</em></span>
+
+        {/* Real tabs rather than a toggle, so the pattern is familiar and the
+            roles are correct for a screen reader. */}
+        <div class="tabs" role="tablist" aria-label="Editor view">
+          <button type="button" role="tab" data-tab="write" aria-selected="true" aria-controls="panel-write">
+            Write
+          </button>
+          <button type="button" role="tab" data-tab="preview" aria-selected="false" aria-controls="panel-preview">
+            Preview
+          </button>
+        </div>
+      </div>
+
+      <div id="panel-write" role="tabpanel">
+        {/* Acts on the current selection, so it helps someone who knows the
+            syntax as much as someone who does not. Six buttons deliberately —
+            a toolbar long enough to scan is one you stop reading, and the rest
+            of the syntax lives in the reference below. */}
+        <div class="md-tools" role="toolbar" aria-label="Markdown formatting">
+          <button type="button" data-md="bold" title="Bold — ⌘B"><strong>B</strong></button>
+          <button type="button" data-md="italic" title="Italic — ⌘I"><em>I</em></button>
+          <button type="button" data-md="link" title="Link — ⌘K">link</button>
+          <button type="button" data-md="code" title="Inline code">&lt;/&gt;</button>
+          <span class="md-sep" aria-hidden="true"></span>
+          <button type="button" data-md="h2" title="Heading">H2</button>
+          <button type="button" data-md="ul" title="Bullet list">&bull; list</button>
+        </div>
+
+        <label>
+          <span class="visually-hidden">Post body in markdown</span>
+          <textarea name="body" id="body" spellcheck="true" rows="24"></textarea>
+        </label>
+
+        <details class="md-help">
+          <summary>Markdown reference</summary>
+          <table>
+            <tbody>
+              <tr><td><code># Heading</code></td><td>Heading. <code>##</code> for a subheading — the post title is already an <code>h1</code>, so start at <code>##</code>.</td></tr>
+              <tr><td><code>**bold**</code></td><td><strong>bold</strong></td></tr>
+              <tr><td><code>*italic*</code></td><td><em>italic</em></td></tr>
+              <tr><td><code>`code`</code></td><td>inline code</td></tr>
+              <tr><td><code>[text](url)</code></td><td>a link</td></tr>
+              <tr><td><code>- item</code></td><td>bullet list — one per line</td></tr>
+              <tr><td><code>1. item</code></td><td>numbered list</td></tr>
+              <tr><td><code>&gt; quote</code></td><td>blockquote</td></tr>
+              <tr><td><code>---</code></td><td>horizontal rule</td></tr>
+              <tr><td><code>```sql</code></td><td>fenced code block, with the language for highlighting</td></tr>
+              <tr><td><code>| a | b |</code></td><td>table — needs a <code>|---|---|</code> row under the header</td></tr>
+            </tbody>
+          </table>
+          <p>
+            A blank line starts a new paragraph; a single newline does not. Raw HTML works here
+            because you are the author — it is stripped in comments, which anyone can write.
+          </p>
+        </details>
+      </div>
+
+      {/* Rendered server-side by /admin/preview, through the same pipeline as
+          save — see the note there on why this is a round trip. */}
+      <div id="panel-preview" role="tabpanel" hidden>
+        <div class="prose" id="preview-output"></div>
+      </div>
+    </div>
 
     <div class="actions">
       <button class="button primary" type="submit">{isNew ? 'Create post' : 'Save changes'}</button>
@@ -187,6 +249,169 @@ const TIERS = [
       if (!window.confirm(button.getAttribute('data-confirm'))) event.preventDefault();
     });
   }
+
+  // ---- Markdown toolbar -----------------------------------------------------
+
+  /**
+   * Replaces a range while preserving the browser's native undo stack.
+   *
+   * Assigning to `textarea.value` wipes undo history, which in an editor is
+   * infuriating — one toolbar click and ⌘Z can no longer reach anything you
+   * typed before it. `execCommand('insertText')` is deprecated but it is still
+   * the only way to edit a textarea that the undo stack knows about;
+   * `setRangeText` is the fallback for whenever it finally goes.
+   */
+  function replaceRange(start, end, text) {
+    textarea.focus();
+    textarea.setSelectionRange(start, end);
+    if (!document.execCommand || !document.execCommand('insertText', false, text)) {
+      textarea.setRangeText(text, start, end, 'end');
+    }
+  }
+
+  /** Wraps the selection, or drops a placeholder and selects it to type over. */
+  function wrap(before, after, placeholder) {
+    const { selectionStart: start, selectionEnd: end, value } = textarea;
+    const selected = value.slice(start, end);
+    const inner = selected || placeholder;
+
+    replaceRange(start, end, before + inner + after);
+
+    // Select the inner text either way: with a selection you can keep typing
+    // to replace it, and with a placeholder you overwrite the hint directly.
+    const innerStart = start + before.length;
+    textarea.setSelectionRange(innerStart, innerStart + inner.length);
+  }
+
+  /** Prefixes every line the selection touches — headings, quotes, lists. */
+  function prefixLines(makePrefix) {
+    const { selectionStart: start, selectionEnd: end, value } = textarea;
+
+    // Expand to whole lines; prefixing half a line produces nonsense.
+    const from = value.lastIndexOf('\n', start - 1) + 1;
+    const toIndex = value.indexOf('\n', end);
+    const to = toIndex === -1 ? value.length : toIndex;
+
+    const lines = value.slice(from, to).split('\n');
+    const next = lines.map((line, i) => makePrefix(i) + line).join('\n');
+
+    replaceRange(from, to, next);
+    textarea.setSelectionRange(from, from + next.length);
+  }
+
+  const actions = {
+    bold: () => wrap('**', '**', 'bold text'),
+    italic: () => wrap('*', '*', 'italic text'),
+    code: () => wrap('`', '`', 'code'),
+    h2: () => prefixLines(() => '## '),
+    ul: () => prefixLines(() => '- '),
+    link: () => {
+      const { selectionStart: start, selectionEnd: end, value } = textarea;
+      const selected = value.slice(start, end);
+      // If you selected a URL, it belongs in the target rather than the label.
+      const isUrl = /^https?:\/\/\S+$/.test(selected.trim());
+      const text = isUrl ? `[](${selected.trim()})` : `[${selected || 'text'}](url)`;
+
+      replaceRange(start, end, text);
+
+      // Land the cursor on the half you still have to fill in.
+      const caret = isUrl ? start + 1 : start + text.indexOf('(') + 1;
+      const length = isUrl ? 0 : 3;
+      textarea.setSelectionRange(caret, caret + length);
+    },
+  };
+
+  for (const button of document.querySelectorAll('[data-md]')) {
+    // mousedown, not click: the textarea would lose its selection to the
+    // button's focus before a click handler ever ran.
+    button.addEventListener('mousedown', (event) => {
+      event.preventDefault();
+      actions[button.dataset.md]?.();
+    });
+  }
+
+  textarea.addEventListener('keydown', (event) => {
+    if (!(event.metaKey || event.ctrlKey) || event.shiftKey) return;
+    const key = event.key.toLowerCase();
+    const shortcut = { b: 'bold', i: 'italic', k: 'link' }[key];
+    if (!shortcut) return;
+    event.preventDefault();
+    actions[shortcut]();
+  });
+
+  // ---- Write / Preview tabs -------------------------------------------------
+
+  const panels = {
+    write: document.getElementById('panel-write'),
+    preview: document.getElementById('panel-preview'),
+  };
+  const output = document.getElementById('preview-output');
+  const tabs = [...document.querySelectorAll('[data-tab]')];
+
+  // Only re-render when the text has actually changed since the last preview.
+  // Flicking between tabs to re-read something should not cost a round trip.
+  let lastRendered = null;
+
+  async function renderPreview() {
+    const source = textarea.value;
+    if (source === lastRendered) return;
+
+    output.setAttribute('aria-busy', 'true');
+    try {
+      const response = await fetch('/admin/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+        body: source,
+      });
+      if (!response.ok) throw new Error(String(response.status));
+      output.innerHTML = await response.text();
+      lastRendered = source;
+    } catch {
+      // Say so plainly rather than showing a stale or blank preview, which
+      // would read as "your markdown produced nothing".
+      output.innerHTML =
+        '<p style="color:var(--warn)">Could not render a preview. Your text is safe — switch back to Write.</p>';
+      lastRendered = null;
+    } finally {
+      output.removeAttribute('aria-busy');
+    }
+  }
+
+  function show(name) {
+    for (const tab of tabs) {
+      tab.setAttribute('aria-selected', String(tab.dataset.tab === name));
+    }
+    panels.write.hidden = name !== 'write';
+    panels.preview.hidden = name !== 'preview';
+
+    if (name === 'preview') renderPreview();
+    else textarea.focus();
+  }
+
+  for (const tab of tabs) {
+    tab.addEventListener('click', () => show(tab.dataset.tab));
+  }
+
+  // Left/right arrows move between tabs, which is what the tablist role
+  // promises a keyboard user.
+  for (const tab of tabs) {
+    tab.addEventListener('keydown', (event) => {
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+      event.preventDefault();
+      const next = tabs[(tabs.indexOf(tab) + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length];
+      next.focus();
+      show(next.dataset.tab);
+    });
+  }
+
+  // Saving from the Preview tab should still work — the textarea is hidden,
+  // not detached, so its value is still submitted.
+  document.addEventListener('keydown', (event) => {
+    if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === 'p') {
+      event.preventDefault();
+      show(panels.preview.hidden ? 'preview' : 'write');
+    }
+  });
 </script>
 
 <style>
@@ -310,10 +535,160 @@ const TIERS = [
     border-color: color-mix(in srgb, var(--warn) 35%, transparent);
   }
 
+  .body-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+
+  .tabs {
+    display: inline-flex;
+    gap: 0.125rem;
+  }
+
+  .tabs button {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    padding: 0.25rem 0.625rem;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 5px;
+    color: var(--text-faint);
+    cursor: pointer;
+  }
+
+  .tabs button:hover {
+    color: var(--text-dim);
+  }
+
+  .tabs button[aria-selected='true'] {
+    color: var(--text);
+    background: var(--bg-raised);
+    border-color: var(--border);
+  }
+
+  /* Matches the textarea's box so switching tabs does not resize the page —
+     a preview that makes the Save button jump is worse than no preview. */
+  #panel-preview .prose {
+    min-height: 24rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1rem 1.125rem;
+    background: var(--bg-raised);
+  }
+
+  #panel-preview .prose:empty::after {
+    content: 'Nothing to preview yet.';
+    color: var(--text-faint);
+    font-family: var(--mono);
+    font-size: 0.8125rem;
+  }
+
+  #panel-preview .prose[aria-busy='true'] {
+    opacity: 0.5;
+  }
+
+  .visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+
   .form-error {
     color: var(--warn);
     font-size: 0.9375rem;
     border-inline-start: 2px solid var(--warn);
     padding-inline-start: 0.875rem;
+  }
+</style>
+
+<style>
+  .md-tools {
+    display: flex;
+    align-items: center;
+    gap: 0.1875rem;
+    margin-block-end: 0.375rem;
+  }
+
+  .md-tools button {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    min-width: 1.75rem;
+    padding: 0.25rem 0.4375rem;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    color: var(--text-dim);
+    cursor: pointer;
+  }
+
+  .md-tools button:hover {
+    color: var(--text);
+    border-color: var(--text-faint);
+  }
+
+  .md-tools button:active {
+    background: var(--bg-raised);
+  }
+
+  .md-sep {
+    width: 1px;
+    height: 1rem;
+    background: var(--border);
+    margin-inline: 0.3125rem;
+  }
+
+  .md-help {
+    margin-block-start: 0.625rem;
+    font-size: 0.875rem;
+  }
+
+  .md-help summary {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--text-faint);
+    cursor: pointer;
+  }
+
+  .md-help summary:hover {
+    color: var(--text-dim);
+  }
+
+  .md-help table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-block-start: 0.75rem;
+  }
+
+  .md-help td {
+    padding: 0.3125rem 0.75rem 0.3125rem 0;
+    border-block-end: 1px solid var(--border);
+    vertical-align: top;
+    color: var(--text-dim);
+    font-size: 0.8125rem;
+  }
+
+  .md-help td:first-child {
+    white-space: nowrap;
+    width: 1%;
+  }
+
+  .md-help code {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 0.0625rem 0.3125rem;
+  }
+
+  .md-help p {
+    color: var(--text-faint);
+    font-size: 0.8125rem;
+    margin-block-end: 0;
   }
 </style>

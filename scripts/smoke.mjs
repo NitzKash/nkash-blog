@@ -25,6 +25,21 @@ const sql = (statement) =>
     stdio: ['ignore', 'pipe', 'ignore'],
   });
 
+/**
+ * Rows from a query, parsed properly.
+ *
+ * wrangler prefixes its JSON with log lines, so the array is sliced out and
+ * handed to JSON.parse rather than picked apart with a regex — values contain
+ * escaped quotes and newlines, and regexing those is how the first version of
+ * this helper broke.
+ */
+function sqlRows(statement) {
+  const out = sql(statement);
+  const start = out.indexOf('[');
+  if (start === -1) return [];
+  return JSON.parse(out.slice(start))[0]?.results ?? [];
+}
+
 const BASE = process.env.SMOKE_BASE ?? 'http://localhost:4321';
 
 /**
@@ -337,9 +352,9 @@ try {
   check('it survives as escaped text instead', xss.body.includes('&lt;img'));
 
   // Votes
-  const commentId = sql(
+  const commentId = sqlRows(
     `SELECT id FROM comments WHERE post_slug = '${FIXTURES.public.slug}' ORDER BY created_at LIMIT 1`,
-  ).match(/"id":\s*"([^"]+)"/)?.[1];
+  )[0]?.id;
 
   async function vote(direction, cookie) {
     const r = await fetch(`${BASE}/comments/vote`, {
@@ -355,17 +370,12 @@ try {
     return r.status;
   }
 
-  const tally = () => {
-    const out = sql(
+  const tally = () =>
+    sqlRows(
       `SELECT COALESCE(SUM(CASE WHEN value=1 THEN 1 ELSE 0 END),0) AS up,
               COALESCE(SUM(CASE WHEN value=-1 THEN 1 ELSE 0 END),0) AS down
        FROM comment_votes WHERE comment_id = '${commentId}'`,
-    );
-    return {
-      up: Number(out.match(/"up":\s*(\d+)/)?.[1] ?? -1),
-      down: Number(out.match(/"down":\s*(\d+)/)?.[1] ?? -1),
-    };
-  };
+    )[0] ?? { up: -1, down: -1 };
 
   check('an approved member can upvote', (await vote('up', friendCookie)) === 303);
   check('the upvote is counted', tally().up === 1);
@@ -398,6 +408,51 @@ try {
   check('the owner can hide a comment', hide.status === 303);
   check('a hidden comment disappears for everyone else', !(await get(pub)).body.includes(`hello from ${RUN}`));
   check('the owner still sees it, to undo', (await get(pub, ownerCookie)).body.includes(`hello from ${RUN}`));
+
+
+  // -------------------------------------------------------------------------
+  // Editor preview. The round trip exists so preview and publish cannot
+  // disagree; that is only true while this check passes.
+  // -------------------------------------------------------------------------
+  console.log('\nEditor preview:');
+
+  const sample = `## Parity ${RUN}\n\n**bold**, \`code\`, a [link](https://nkash.dev).\n\n- one\n- two`;
+
+  const previewRes = await fetch(`${BASE}/admin/preview`, {
+    method: 'POST',
+    headers: { Cookie: `${COOKIE_NAME}=${ownerCookie}`, Origin: BASE, 'Content-Type': 'text/plain' },
+    body: sample,
+  });
+  const previewHtml = await previewRes.text();
+
+  check('preview renders for an owner', previewRes.status === 200, `got ${previewRes.status}`);
+  check('preview output is real html', previewHtml.includes('<strong>bold</strong>'));
+
+  const paritySlug = `smoke-${RUN}-parity`;
+  await save({
+    slug: paritySlug,
+    title: `Parity ${RUN}`,
+    visibility: 'private',
+    pubDate: '2026-01-01',
+    body: sample,
+  });
+  const storedHtml = sqlRows(`SELECT html FROM posts WHERE slug = '${paritySlug}'`)[0]?.html ?? '';
+
+  // The whole point. A preview rendered by a different pipeline would drift,
+  // and the drift would only show up after publishing.
+  check('preview is byte-identical to what gets published', previewHtml === storedHtml,
+    `preview ${previewHtml.length}b vs stored ${storedHtml.length}b`);
+
+  await save({ originalSlug: paritySlug, action: 'delete' });
+
+  check(
+    'a signed-in non-member cannot reach preview',
+    (await fetch(`${BASE}/admin/preview`, {
+      method: 'POST',
+      headers: { Cookie: `${COOKIE_NAME}=${strangerCookie}`, Origin: BASE },
+      body: 'x',
+    }).then((r) => r.status)) === 404,
+  );
 
   sql(`DELETE FROM comment_votes WHERE comment_id = '${commentId}'`);
   sql(`DELETE FROM comments WHERE post_slug = '${FIXTURES.public.slug}'`);
