@@ -18,6 +18,34 @@ Nothing yet.
 
 ---
 
+## [1.3.0] — 2026-10-03
+
+### Added
+
+- **Approved members can write posts.** The editor, preview and post list are no longer
+  owner-only; anyone in the circle can publish at any tier.
+- **Bylines** on the index, the archive and the post page, showing the author's handle. Posts by
+  the site owner carry no byline — they are the default, and marking every one would be noise.
+
+### Changed
+
+- **`private` now means the author alone**, where it used to mean "owners only". The old
+  definition broke as soon as there was more than one writer: a contributor's private post would
+  have been readable by the site owner and not by the person who wrote it. The consequence is
+  deliberate — **the owner no longer has site-level access to someone else's private posts**, and
+  `/posts/<slug>` returns the same 404 it gives anyone. The operator can still read the row from
+  the database, as on any hosted system.
+- Editing is narrower than reading: an owner can read a contributor's `circle` post but cannot
+  rewrite it under their name. Deleting is wider than editing, because moderating a site means
+  being able to take something down even when you may not change it.
+- **The homepage intro** leads with the range — fintech, high-throughput payment calculation,
+  document-understanding computer vision, CRM connectors — rather than a job title. Meta and RSS
+  descriptions updated to match, since those are what search results and link previews show.
+- Two editor labels this release falsified: **Friends** now reads "members approved by the
+  admin", and **Draft** is author-only rather than owner-only.
+
+---
+
 ## [1.2.0] — 2026-10-03
 
 ### Added
@@ -181,7 +209,8 @@ for the cost of the domain alone.
     PATCH  fixes and internal work only
 -->
 
-[Unreleased]: https://github.com/NitzKash/nkash-blog/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/NitzKash/nkash-blog/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/NitzKash/nkash-blog/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/NitzKash/nkash-blog/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/NitzKash/nkash-blog/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/NitzKash/nkash-blog/releases/tag/v1.0.0
