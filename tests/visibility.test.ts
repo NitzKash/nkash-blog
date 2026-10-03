@@ -6,7 +6,8 @@ vi.mock('../src/access.config', () => ({
   circle: () => ['trusted-friend', 'Colleague@Example.COM'],
 }));
 
-const { canView, canComment, audienceFromLists, visibleTo } = await import('../src/lib/visibility');
+const { canView, canComment, canEdit, canDelete, isAuthor, audienceFromLists, visibleTo } =
+  await import('../src/lib/visibility');
 type Viewer = Parameters<typeof audienceFromLists>[0];
 
 const owner: Viewer = { sub: 'github:1', login: 'the-owner' };
@@ -163,5 +164,134 @@ describe('canComment', () => {
     expect(canComment(draft, 'anonymous', stranger, 'pending')).toBe(false);
     expect(canComment(draft, 'circle', circleMember, 'approved')).toBe(false);
     expect(canComment(draft, 'owner', owner)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Multiple authors. `private` means the author alone, which is a different
+// thing from what it meant when every post was the owner's.
+// ---------------------------------------------------------------------------
+
+const authored = (visibility: string, authorId: string | null, extra = {}) =>
+  ({ visibility, allow: [], draft: false, authorId, ...extra }) as never;
+
+const alice: Viewer = { sub: 'github:100', login: 'alice' };
+const bob: Viewer = { sub: 'github:200', login: 'bob' };
+
+describe('isAuthor', () => {
+  it('matches on the provider subject, not the handle', () => {
+    expect(isAuthor(authored('private', 'github:100'), alice)).toBe(true);
+    expect(isAuthor(authored('private', 'github:100'), bob)).toBe(false);
+  });
+
+  it('is false for an unattributed post and for anonymous viewers', () => {
+    expect(isAuthor(authored('private', null), alice)).toBe(false);
+    expect(isAuthor(authored('private', 'github:100'), null)).toBe(false);
+  });
+});
+
+describe('canView with authors', () => {
+  it('lets an author read their own post at any tier', () => {
+    for (const tier of ['public', 'circle', 'private']) {
+      expect(canView(authored(tier, 'github:100'), 'anonymous', alice), tier).toBe(true);
+    }
+  });
+
+  it('lets an author read their own draft', () => {
+    expect(canView(authored('public', 'github:100', { draft: true }), 'anonymous', alice)).toBe(true);
+  });
+
+  // The property this whole change turns on.
+  it('hides a contributor private post from the owner', () => {
+    expect(canView(authored('private', 'github:100'), 'owner', owner)).toBe(false);
+  });
+
+  it('hides a contributor private post from another contributor', () => {
+    expect(canView(authored('private', 'github:100'), 'circle', bob)).toBe(false);
+  });
+
+  it('hides a contributor draft from the owner', () => {
+    expect(canView(authored('circle', 'github:100', { draft: true }), 'owner', owner)).toBe(false);
+  });
+
+  // Unattributed posts predate authorship and stay the owner's.
+  it('keeps unattributed private posts owner-only', () => {
+    expect(canView(authored('private', null), 'owner', owner)).toBe(true);
+    expect(canView(authored('private', null), 'circle', alice)).toBe(false);
+    expect(canView(authored('private', null), 'anonymous', null)).toBe(false);
+  });
+
+  it('still shows contributor circle posts to the circle and the owner', () => {
+    expect(canView(authored('circle', 'github:100'), 'circle', bob)).toBe(true);
+    expect(canView(authored('circle', 'github:100'), 'owner', owner)).toBe(true);
+    expect(canView(authored('circle', 'github:100'), 'anonymous', null)).toBe(false);
+  });
+
+  it('still shows contributor public posts to everyone', () => {
+    expect(canView(authored('public', 'github:100'), 'anonymous', null)).toBe(true);
+  });
+});
+
+describe('canEdit', () => {
+  it('lets an author edit their own', () => {
+    expect(canEdit(authored('public', 'github:100'), 'circle', alice)).toBe(true);
+  });
+
+  // Narrower than reading on purpose: an owner can read a contributor's circle
+  // post but must not be able to rewrite it under their name.
+  it('refuses the owner on a contributor post they can read', () => {
+    expect(canView(authored('circle', 'github:100'), 'owner', owner)).toBe(true);
+    expect(canEdit(authored('circle', 'github:100'), 'owner', owner)).toBe(false);
+  });
+
+  it('refuses one contributor on another contributor post', () => {
+    expect(canEdit(authored('public', 'github:100'), 'circle', bob)).toBe(false);
+  });
+
+  it('lets the owner edit unattributed posts', () => {
+    expect(canEdit(authored('public', null), 'owner', owner)).toBe(true);
+    expect(canEdit(authored('public', null), 'circle', alice)).toBe(false);
+  });
+
+  it('refuses anonymous viewers outright', () => {
+    expect(canEdit(authored('public', 'github:100'), 'anonymous', null)).toBe(false);
+  });
+});
+
+describe('canDelete', () => {
+  // Moderating your own site means being able to take something down, even
+  // something you may not rewrite.
+  it('lets the owner remove anything', () => {
+    expect(canDelete(authored('private', 'github:100'), 'owner', owner)).toBe(true);
+  });
+
+  it('lets an author remove their own', () => {
+    expect(canDelete(authored('public', 'github:100'), 'circle', alice)).toBe(true);
+  });
+
+  it('refuses one contributor on another contributor post', () => {
+    expect(canDelete(authored('public', 'github:100'), 'circle', bob)).toBe(false);
+  });
+});
+
+describe('visibleTo with authors', () => {
+  const mixed = [
+    { data: authored('public', 'github:100') },
+    { data: authored('circle', 'github:100') },
+    { data: authored('private', 'github:100') },
+    { data: authored('private', 'github:200') },
+    { data: authored('private', null) },
+  ];
+
+  it('gives alice public, circle and her own private — not bob\'s', () => {
+    expect(visibleTo(mixed as never, 'circle', alice)).toHaveLength(3);
+  });
+
+  it('gives the owner public, circle and the unattributed one only', () => {
+    expect(visibleTo(mixed as never, 'owner', owner)).toHaveLength(3);
+  });
+
+  it('gives an anonymous reader the public one', () => {
+    expect(visibleTo(mixed as never, 'anonymous', null)).toHaveLength(1);
   });
 });

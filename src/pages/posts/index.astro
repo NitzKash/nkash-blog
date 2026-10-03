@@ -8,7 +8,7 @@ import type { Post } from '../../lib/data';
 
 const { viewer, audience } = Astro.locals;
 
-const posts = visibleTo(await postStore.list(audience), audience, viewer);
+const posts = visibleTo(await postStore.list(audience, viewer?.sub), audience, viewer);
 
 // Group by year so the archive stays scannable as it grows.
 const byYear = new Map<number, Post[]>();

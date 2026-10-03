@@ -44,6 +44,23 @@ interface Gated {
   visibility: Visibility;
   allow?: readonly string[];
   draft?: boolean;
+  /**
+   * Provider subject of whoever wrote it. `null` or absent means the site
+   * owner — posts written before authorship existed, and the reason there is
+   * no real id baked into a migration in a public repository.
+   */
+  authorId?: string | null;
+}
+
+/** Did this viewer write it? Their own post is always theirs to read. */
+export function isAuthor(item: Gated, viewer: Viewer | null): boolean {
+  if (!viewer) return false;
+  return item.authorId ? item.authorId === viewer.sub : false;
+}
+
+/** An unattributed post belongs to the site owner. */
+function isOwnerAuthored(item: Gated): boolean {
+  return item.authorId == null;
 }
 
 /**
@@ -58,24 +75,50 @@ interface Gated {
  * Fails closed: an unrecognised visibility value returns false.
  */
 export function canView(item: Gated, audience: Audience, viewer: Viewer | null): boolean {
-  // Drafts are owner-only regardless of their declared visibility, so you can
-  // write a post as `visibility: public` from the first draft without it going
-  // live the moment you push.
-  if (item.draft && audience !== 'owner') return false;
+  // Your own post is always yours to read, at any tier, draft or not.
+  if (isAuthor(item, viewer)) return true;
+
+  // An unattributed post is the site owner's, and they keep the access they
+  // had before authorship existed.
+  const ownerOwnsIt = isOwnerAuthored(item) && audience === 'owner';
+
+  // Drafts are author-only. Being an owner does not open someone else's.
+  if (item.draft) return ownerOwnsIt;
 
   if (item.visibility === 'public') return true;
-  if (audience === 'owner') return true;
 
   if (item.visibility === 'circle') {
-    if (audience === 'circle') return true;
+    if (audience === 'circle' || audience === 'owner') return true;
     // Per-post grants widen `circle` only. They deliberately cannot open a
     // `private` post: "private" has to mean exactly one thing, or a stray
-    // `allow:` line in frontmatter becomes a silent disclosure.
+    // `allow:` line becomes a silent disclosure.
     return Boolean(viewer && item.allow?.length && matchesList(item.allow, viewer));
   }
 
-  // `private`, and anything the schema failed to catch.
+  // `private` means the author alone — handled above. The owner reaches their
+  // own unattributed posts here and nobody else's. Anything the schema failed
+  // to catch lands here too, and is refused.
+  if (item.visibility === 'private') return ownerOwnsIt;
+
   return false;
+}
+
+/**
+ * May this viewer change the post?
+ *
+ * Narrower than reading, deliberately: an owner can read a contributor's
+ * `circle` post but must not be able to rewrite it under their name. Deleting
+ * is separate — see `canDelete`, which an owner does get, because moderating
+ * your own site means being able to take something down.
+ */
+export function canEdit(item: Gated, audience: Audience, viewer: Viewer | null): boolean {
+  if (isAuthor(item, viewer)) return true;
+  return isOwnerAuthored(item) && audience === 'owner';
+}
+
+/** Authors remove their own; owners can take anything down. */
+export function canDelete(item: Gated, audience: Audience, viewer: Viewer | null): boolean {
+  return audience === 'owner' || canEdit(item, audience, viewer);
 }
 
 /**

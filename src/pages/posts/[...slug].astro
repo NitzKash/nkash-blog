@@ -4,7 +4,7 @@ import Tier from '../../components/Tier.astro';
 import SignIn from '../../components/SignIn.astro';
 import { posts as postStore } from '../../lib/data';
 import Comments from '../../components/Comments.astro';
-import { canView } from '../../lib/visibility';
+import { canView, canEdit } from '../../lib/visibility';
 import { publicPostCacheHeaders, privateCacheHeaders } from '../../lib/cache';
 
 const { viewer, audience, memberStatus } = Astro.locals;
@@ -65,8 +65,14 @@ const dateFormat = new Intl.DateTimeFormat('en-GB', {
             </time>
             <span>·</span>
             <span>{post.readingMinutes} min</span>
+            {post.author && (
+              <>
+                <span>·</span>
+                <span>by {post.author}</span>
+              </>
+            )}
             <Tier visibility={post.data.visibility} draft={post.data.draft} />
-            {audience === 'owner' && (
+            {canEdit(post.data, audience, viewer) && (
               <a href={`/admin/editor?slug=${encodeURIComponent(post.id)}`}>edit</a>
             )}
           </div>

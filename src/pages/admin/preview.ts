@@ -16,7 +16,11 @@ export const prerender = false;
  * never notices.
  */
 export const POST: APIRoute = async ({ request, locals, url }) => {
-  if (locals.audience !== 'owner') return new Response(null, { status: 404 });
+  // Contributors write too. Whether they may touch *this* post is canEdit's
+  // job, not this gate's.
+  if (locals.audience !== 'owner' && locals.audience !== 'circle') {
+    return new Response(null, { status: 404 });
+  }
 
   const origin = request.headers.get('origin');
   if (origin && origin !== url.origin) return new Response(null, { status: 403 });

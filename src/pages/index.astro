@@ -9,7 +9,7 @@ import { publicCacheHeaders, privateCacheHeaders } from '../lib/cache';
 const { viewer, audience, memberStatus } = Astro.locals;
 
 // The store narrows by audience in SQL; visibleTo() is still the decision.
-const posts = visibleTo(await postStore.list(audience), audience, viewer);
+const posts = visibleTo(await postStore.list(audience, viewer?.sub), audience, viewer);
 const recent = posts.slice(0, 8);
 
 // An anonymous render contains only public content, so it is safe to cache at
